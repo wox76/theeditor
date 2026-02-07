@@ -227,6 +227,10 @@ export class GameManager {
         this.app.sceneManager.scene.children.forEach(c => { if (c.type === 'GridHelper') c.visible = false; });
         
         this.app.ui.setFullScreen(true);
+        
+        const hud = document.getElementById('game-hud');
+        if (hud) hud.classList.remove('hidden');
+        this.updateHUD();
 
         // Enemy & Bonus Setup
         this.enemyMixers = [];
@@ -457,7 +461,23 @@ export class GameManager {
         if (this.gameCameraObj) this.gameCameraObj.visible = true;
         this.gameCameraObj = null;
 
+        const hud = document.getElementById('game-hud');
+        if (hud) hud.classList.add('hidden');
+
         this.app.ui.setFullScreen(false);
+    }
+
+    updateHUD() {
+        const scoreEl = document.getElementById('hud-score');
+        const livesEl = document.getElementById('hud-lives');
+        if (scoreEl) scoreEl.innerText = `Score: ${this.score}`;
+        if (livesEl) {
+            const hearts = livesEl.querySelectorAll('.heart');
+            hearts.forEach((h, i) => {
+                if (i < this.lives) h.classList.remove('lost');
+                else h.classList.add('lost');
+            });
+        }
     }
 
     update(dt) { // Fixed signature in replacement block if needed, but context matching is key
@@ -1220,6 +1240,7 @@ export class GameManager {
                     o.userData.collected = true;
 
                     this.score += (o.userData.points || 100);
+                    this.updateHUD();
                     
                     const u = o.userData;
                     const runtime = this.bonusRuntimeData.get(o.uuid);
@@ -1324,6 +1345,7 @@ export class GameManager {
                             }
 
                             this.lives--;
+                            this.updateHUD();
                             this.invulnerabilityTimer = 2.0; // 2 seconds iFrames
                             if (this.lives <= 0) { alert("GAME OVER"); this.stop(); }
                             else { 

@@ -150,6 +150,48 @@ body { margin: 0; padding: 0; width: 100vw; height: 100vh; background-color: var
     opacity: 1;
     transform: translateX(-50%) translateY(0);
 }
+
+/* Game HUD */
+#game-hud {
+    position: absolute;
+    top: 20px;
+    left: 20px;
+    display: flex;
+    flex-direction: column;
+    gap: 10px;
+    z-index: 200;
+    pointer-events: none;
+    font-family: 'Arial Black', sans-serif;
+    text-shadow: 2px 2px 0 #000;
+}
+
+.hud-item {
+    background: rgba(0, 0, 0, 0.5);
+    padding: 10px 15px;
+    border-radius: 8px;
+    color: #fff;
+    font-size: 20px;
+    border: 2px solid rgba(255, 255, 255, 0.2);
+}
+
+#hud-score {
+    color: #FFD700;
+}
+
+#hud-lives {
+    display: flex;
+    gap: 5px;
+    font-size: 24px;
+}
+
+.heart {
+    filter: drop-shadow(0 0 5px rgba(255, 0, 0, 0.5));
+}
+
+.heart.lost {
+    filter: grayscale(1) opacity(0.3);
+}
+
 .msg-balloon::after {
     content: '';
     position: absolute;
