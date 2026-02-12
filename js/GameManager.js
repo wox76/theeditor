@@ -12,13 +12,13 @@ export class GameManager {
         this.isPlaying = false;
         this.player = null;
         this.mixer = null;
-        this.actions = {}; 
+        this.actions = {};
         this.activeAction = null;
         this.keys = new Set();
         this.clock = new THREE.Clock();
         this.velocity = new THREE.Vector3();
         this.onGround = false;
-        this.gravity = -35; 
+        this.gravity = -35;
         this.cameraOffset = new THREE.Vector3(0, 3, -5);
         this.gameCameraObj = null;
         this.score = 0;
@@ -46,20 +46,20 @@ export class GameManager {
         this.onBlur = () => this.keys.clear();
         this.firstFrame = false;
         this.mouseRotation = new THREE.Vector2();
-        
+
         this.onMouseMove = (e) => {
             if (!this.isPlaying) return;
-            
+
             // Check if we are in a mouse-controlled camera mode
             const type = this.gameCameraObj?.userData.type;
             if (type !== 'TPS' && type !== 'FPS') return;
 
             const mx = e.movementX || e.mozMovementX || e.webkitMovementX || 0;
             const my = e.movementY || e.mozMovementY || e.webkitMovementY || 0;
-            
+
             this.mouseRotation.x -= mx * 0.002;
             this.mouseRotation.y -= my * 0.002;
-            
+
             this.mouseRotation.y = Math.max(-Math.PI / 2.1, Math.min(Math.PI / 2.1, this.mouseRotation.y));
         };
 
@@ -67,11 +67,12 @@ export class GameManager {
             if (this.isPlaying && (this.gameCameraObj?.userData.type === 'TPS' || this.gameCameraObj?.userData.type === 'FPS')) {
                 if (document.pointerLockElement !== this.app.sceneManager.renderer.domElement) {
                     const promise = this.app.sceneManager.renderer.domElement.requestPointerLock();
-                    if (promise && promise.catch) promise.catch(() => {}); // Ignore exit errors
+                    if (promise && promise.catch) promise.catch(() => { }); // Ignore exit errors
                 }
             }
         };
         this.lanternCooldownTimer = 0;
+        this.flyTimer = null;
     }
 
     start() {
@@ -81,6 +82,7 @@ export class GameManager {
         this.score = 0; this.lives = 3;
         this.velocity.set(0, 0, 0);
         this.onGround = false;
+
         this.jumpCount = 0;
         this.lastMoveDir = 1; // 1 for right, -1 for left
         this.initialStates = [];
@@ -88,6 +90,8 @@ export class GameManager {
         this.lanternCooldownTimer = 0;
         this.actionLocked = false;
         this.invulnerabilityTimer = 0;
+        if (this.flyTimer) clearTimeout(this.flyTimer);
+        this.flyTimer = null;
 
         this.editorCameraState = {
             position: this.app.sceneManager.camera.position.clone(),
@@ -97,28 +101,28 @@ export class GameManager {
         this.app.editor.objects.forEach(o => {
             // Safety: Break any existing cycles
             let p = o.parent;
-            while(p) { if(p === o) { o.removeFromParent(); break; } p = p.parent; }
+            while (p) { if (p === o) { o.removeFromParent(); break; } p = p.parent; }
 
-            try { o.updateMatrixWorld(true); } catch(e) { console.warn("Error updating matrix for", o.name); }
-            const state = { 
-                uuid: o.uuid, 
-                p: o.position.clone(), 
-                r: o.rotation.clone(), 
-                s: o.scale.clone(), 
+            try { o.updateMatrixWorld(true); } catch (e) { console.warn("Error updating matrix for", o.name); }
+            const state = {
+                uuid: o.uuid,
+                p: o.position.clone(),
+                r: o.rotation.clone(),
+                s: o.scale.clone(),
                 visible: o.visible,
                 // Save important userData flags that might change
                 isAsset: o.userData.isAsset
             };
             this.initialStates.push(state);
             this.playStartStates.push({ uuid: o.uuid, p: o.position.clone() }); // Copy of start position
-            
+
             // Compute BVH for static meshes (exclude player/helpers)
             if (o.isMesh && !o.userData.isPlayer && !o.userData.isHelper && !o.userData.isCamera) {
                 if (!o.geometry.boundsTree) {
                     o.geometry.computeBoundsTree();
                 }
             }
-            
+
             // Hide Hitboxes for GLB wrappers
             if (o.userData.glbSource && o.material) {
                 if (o.userData.type === 'Enemy' || o.userData.type === 'Boss') {
@@ -137,7 +141,7 @@ export class GameManager {
                     o.material.visible = false;
                 }
             }
-            
+
             // Hide Catchers (Base & Target) - ghost behavior
             if (o.userData.type === 'catcher_base' || o.userData.type === 'catcher_target' || o.userData.type === 'Catcher' || o.userData.type === 'Collision') {
                 o.visible = false;
@@ -155,16 +159,16 @@ export class GameManager {
                 }
             });
         });
-        
+
         // Hide Link Arrows
         if (this.app.editor.linkGroup) this.app.editor.linkGroup.visible = false;
 
         // Prioritize selected object if it is a player, otherwise find first player
         const selected = this.app.editor.selected;
         this.player = (selected && selected.userData.isPlayer) ? selected : this.app.editor.objects.find(o => o.userData.isPlayer);
-        
+
         this.gameCameraObj = (selected && selected.userData.isCamera) ? selected : this.app.editor.objects.find(o => o.userData.isCamera);
-        
+
         if (this.gameCameraObj) {
             const cam = this.app.sceneManager.camera;
             this.gameCameraObj.updateMatrixWorld(true);
@@ -188,7 +192,7 @@ export class GameManager {
                 model.traverse(child => { if (child.isMesh) child.frustumCulled = false; });
                 this.mixer = new THREE.AnimationMixer(model);
                 (this.player.animations || []).forEach(clip => { this.actions[clip.name] = this.mixer.clipAction(clip); });
-                
+
                 // Pre-play Idle animation to avoid T-pose on first frame
                 const u = this.player.userData;
                 const idleAction = (u.actions || []).find(a => a.type === 'Idle' && a.anim && a.active);
@@ -200,6 +204,14 @@ export class GameManager {
             }
         }
 
+        // Reset Fly Mode State (Moved after player discovery)
+        if (this.player) {
+            this.player.userData.mode = 'normal';
+            this.player.userData.flyAnim = null;
+            this.player.userData.startFlyY = undefined;
+            this.player.userData.featherFall = false;
+        }
+
         window.addEventListener('keydown', this.onKeyDown);
         window.addEventListener('keyup', this.onKeyUp);
         window.addEventListener('mousemove', this.onMouseMove);
@@ -208,13 +220,13 @@ export class GameManager {
 
         if (this.gameCameraObj?.userData.type === 'TPS' || this.gameCameraObj?.userData.type === 'FPS') {
             const promise = this.app.sceneManager.renderer.domElement.requestPointerLock();
-            if (promise && promise.catch) promise.catch(() => {}); // Ignore exit errors
-            
+            if (promise && promise.catch) promise.catch(() => { }); // Ignore exit errors
+
             // Sync initial mouse rotation from Camera's editor position relative to player
             if (this.player && this.gameCameraObj) {
                 const relPos = this.gameCameraObj.position.clone().sub(this.player.position);
                 this.cameraDistance = relPos.length();
-                
+
                 // Yaw (X) around Y axis, Pitch (Y) around X axis
                 this.mouseRotation.x = Math.atan2(relPos.x, relPos.z);
                 const ratio = relPos.y / Math.max(this.cameraDistance, 0.1);
@@ -225,9 +237,9 @@ export class GameManager {
         this.app.editor.gizmo.detach();
         this.app.editor.enableOrbit(false);
         this.app.sceneManager.scene.children.forEach(c => { if (c.type === 'GridHelper') c.visible = false; });
-        
+
         this.app.ui.setFullScreen(true);
-        
+
         const hud = document.getElementById('game-hud');
         if (hud) hud.classList.remove('hidden');
         this.updateHUD();
@@ -237,20 +249,20 @@ export class GameManager {
         this.enemyRuntimeData.clear();
         this.bonusRuntimeData.clear();
         this.translatingObjects = [];
-        
+
         this.app.editor.objects.forEach(o => {
             if (o.userData.type === 'Enemy') {
                 const model = o.getObjectByName('model');
                 let mixer = null;
                 let startAnim = null;
                 const animations = o.animations || (model ? model.animations : []);
-                
+
                 if (model && animations && animations.length > 0) {
                     mixer = new THREE.AnimationMixer(model);
                     this.enemyMixers.push(mixer);
-                    
+
                     startAnim = o.userData.animIdle;
-                    
+
                     if (startAnim) {
                         const clip = animations.find(c => c.name === startAnim);
                         if (clip) {
@@ -259,7 +271,7 @@ export class GameManager {
                         }
                     }
                 }
-                
+
                 // Initialize runtime data
                 this.enemyRuntimeData.set(o.uuid, {
                     patrolDir: 1,
@@ -278,7 +290,7 @@ export class GameManager {
                 if (model && animations && animations.length > 0) {
                     mixer = new THREE.AnimationMixer(model);
                     this.enemyMixers.push(mixer); // Reuse enemyMixers array for all non-player mixers
-                    
+
                     if (o.userData.animIdle) {
                         const clip = animations.find(c => c.name === o.userData.animIdle);
                         if (clip) {
@@ -354,13 +366,13 @@ export class GameManager {
         // Permissive filter: include meshes even if invisible (common for triggers/zones)
         // But still exclude helper objects
         const filter = (o) => o.name !== 'ArrowHelper' && !o.userData.isHelper;
-        
+
         const expand = (o) => {
             if (seen.has(o)) return;
             seen.add(o);
-            
+
             if (!filter(o)) return;
-            
+
             // Exclude GLB Wrapper Box (which is made invisible in start) from collision
             // We want to collide with the inner Model for Enemies (precise hitbox),
             // BUT keep the big box for PowerUps/Bonuses (easier pickup)
@@ -377,7 +389,7 @@ export class GameManager {
                 if (!o.geometry.boundingBox) o.geometry.computeBoundingBox();
                 box.union(o.geometry.boundingBox.clone().applyMatrix4(o.matrixWorld));
             }
-            
+
             // For Player, use ONLY the main Capsule/Box wrapper for collision.
             // Do NOT include children (GLB models, attachments) because they might have
             // oversized bounding boxes (artifacts) or extend the hitbox unfairly.
@@ -388,12 +400,12 @@ export class GameManager {
                 expand(children[i]);
             }
         };
-        
+
         expand(obj);
         return box;
     }
 
-    showMessage(text) {
+    showMessage(text, duration = 5000) {
         let balloon = document.getElementById('game-msg-balloon');
         if (!balloon) {
             balloon = document.createElement('div');
@@ -401,25 +413,32 @@ export class GameManager {
             balloon.className = 'msg-balloon';
             document.body.appendChild(balloon);
         }
-        
+
         balloon.innerText = text;
         balloon.classList.add('show');
-        
+
         if (this.msgTimeout) clearTimeout(this.msgTimeout);
         this.msgTimeout = setTimeout(() => {
             balloon.classList.remove('show');
-        }, 5000);
+        }, duration);
     }
 
     stop() {
         if (!this.isPlaying) return;
         this.isPlaying = false;
+        if (this.flyTimer) clearTimeout(this.flyTimer);
+        this.flyTimer = null;
         this.initialStates.forEach(state => {
             const obj = this.app.editor.objects.find(o => o.uuid === state.uuid);
             if (obj) {
                 obj.position.copy(state.p); obj.rotation.copy(state.r); obj.scale.copy(state.s); obj.visible = state.visible;
                 if (state.isAsset !== undefined) obj.userData.isAsset = state.isAsset; // Restore isAsset flag
-                
+
+                // Reset collection/trigger flags
+                if (obj.userData.type === 'Bonus') obj.userData.collected = false;
+                if (obj.userData.type === 'PowerUp') obj.userData.collected = false;
+                if (obj.userData.type === 'Collision') obj.userData.triggered = false;
+
                 if (obj.userData.glbSource && obj.material) obj.material.visible = true;
                 if (obj.parent !== this.app.sceneManager.scene) this.app.sceneManager.scene.add(obj);
 
@@ -436,7 +455,7 @@ export class GameManager {
         document.exitPointerLock?.();
 
         if (this.mixer) { this.mixer.stopAllAction(); this.mixer = null; }
-        
+
         // Stop Enemy Mixers
         this.enemyMixers.forEach(m => m.stopAllAction());
         this.enemyMixers = [];
@@ -449,13 +468,13 @@ export class GameManager {
         this.actions = {}; this.activeAction = null; this.keys.clear();
         this.app.editor.enableOrbit(true);
         this.app.sceneManager.scene.children.forEach(c => { if (c.type === 'GridHelper') c.visible = true; });
-        
+
         if (this.app.editor.linkGroup) this.app.editor.linkGroup.visible = true;
 
         if (this.editorCameraState) {
             this.app.sceneManager.camera.position.copy(this.editorCameraState.position);
             this.app.sceneManager.camera.quaternion.copy(this.editorCameraState.quaternion);
-            this.app.editor.orbit.update(); 
+            this.app.editor.orbit.update();
         }
 
         if (this.gameCameraObj) this.gameCameraObj.visible = true;
@@ -483,7 +502,7 @@ export class GameManager {
     update(dt) { // Fixed signature in replacement block if needed, but context matching is key
         if (!this.isPlaying || !this.player) return;
         const _dt = Math.min(this.clock.getDelta(), 0.05);
-        
+
         if (this.lanternCooldownTimer > 0) this.lanternCooldownTimer -= _dt;
         if (this.invulnerabilityTimer > 0) this.invulnerabilityTimer -= _dt;
 
@@ -491,7 +510,7 @@ export class GameManager {
         this.handlePlayerInput(_dt);
         this.updateCamera();
         this.updateGameLogic(_dt);
-        
+
         if (!this.isPlaying) return;
 
         this.updateEnemies(_dt);
@@ -507,11 +526,11 @@ export class GameManager {
             const t = this.translatingObjects[i];
             const obj = t.object;
             const dist = obj.position.distanceTo(t.target);
-            
+
             if (dist < 0.1) {
                 obj.position.copy(t.target);
                 obj.rotation.copy(t.targetRotation);
-                
+
                 if (obj === this.player) {
                     const state = this.playStartStates.find(s => s.uuid === obj.uuid);
                     if (state) state.p.copy(obj.position);
@@ -529,7 +548,7 @@ export class GameManager {
                 const moveDist = t.speed * dt;
                 const dir = t.target.clone().sub(obj.position).normalize();
                 obj.position.add(dir.multiplyScalar(Math.min(moveDist, dist)));
-                
+
                 const targetQuat = new THREE.Quaternion().setFromEuler(t.targetRotation);
                 obj.quaternion.slerp(targetQuat, 0.1);
             }
@@ -537,32 +556,33 @@ export class GameManager {
     }
 
     useLantern(lanternObj) {
-        // console.log("Lantern Used!");
+        // console.log("useLantern CALLED");
+
         this.lanternCooldownTimer = 4.0;
-        
+
         // Show Lantern
         lanternObj.visible = true;
-        
+
         const ox = lanternObj.userData.equipOffsetX !== undefined ? parseFloat(lanternObj.userData.equipOffsetX) : 0.5;
         const oy = lanternObj.userData.equipOffsetY !== undefined ? parseFloat(lanternObj.userData.equipOffsetY) : 1.0;
         const oz = lanternObj.userData.equipOffsetZ !== undefined ? parseFloat(lanternObj.userData.equipOffsetZ) : 0.5;
-        
+
         // Restore -ox because +ox is Left. We want Right.
         lanternObj.position.set(-ox, oy, oz);
-        
+
         if (lanternObj.userData.equipRotation) {
             lanternObj.rotation.fromArray(lanternObj.userData.equipRotation);
         } else {
             lanternObj.rotation.set(0, 0, 0);
         }
-        
+
         // CRITICAL: Update matrix to ensure getWorldPosition uses the new coordinates immediately
         lanternObj.updateMatrixWorld(true);
-        
+
         this.safeTraverse(lanternObj, c => { c.visible = true; });
-        
+
         // Hide after 1 second
-        setTimeout(() => { 
+        setTimeout(() => {
             if (lanternObj.parent) {
                 lanternObj.visible = false;
             }
@@ -570,17 +590,17 @@ export class GameManager {
 
         // 1. Visual Beam (Cone) - Parented to Lantern for correct position/rotation
         const range = 6.0; // Increased to 6.0 based on user feedback
-        const angle = Math.PI / 6; 
-        
+        const angle = Math.PI / 6;
+
         // Cone Geometry
         const radius = range * Math.tan(angle / 2);
-        const geometry = new THREE.ConeGeometry(radius, range, 32, 1, true); 
-        
+        const geometry = new THREE.ConeGeometry(radius, range, 32, 1, true);
+
         // Align Cone with +Z (Forward)
         // Tip at 0, Base at +range
-        geometry.rotateX(-Math.PI / 2); 
+        geometry.rotateX(-Math.PI / 2);
         geometry.translate(0, 0, range / 2);
-        
+
         const material = new THREE.MeshBasicMaterial({
             color: 0xffff00,
             transparent: true,
@@ -588,16 +608,16 @@ export class GameManager {
             depthWrite: false,
             side: THREE.DoubleSide
         });
-        
+
         const beam = new THREE.Mesh(geometry, material);
-        
+
         // Add to Lantern so it follows pos/rot perfectly
         lanternObj.add(beam);
-        
+
         // User requested 180 rotation on Y relative to lantern
         beam.rotation.y = Math.PI / 2;
         beam.updateMatrixWorld(true); // Ensure rotation is applied for direction calculation
-        
+
         // Remove beam after 0.5s
         setTimeout(() => {
             if (beam.parent) beam.parent.remove(beam);
@@ -606,83 +626,86 @@ export class GameManager {
         // 2. Hit Detection (Use World Space for calculation)
         const spawnPos = new THREE.Vector3();
         beam.getWorldPosition(spawnPos); // Use Beam origin (should be same as lantern)
-        
+
         const dir = new THREE.Vector3(0, 0, 1); // Beam Geometry points +Z
         dir.transformDirection(beam.matrixWorld).normalize();
 
         const enemies = this.app.editor.objects.filter(o => o.userData.type === 'Enemy' && o.parent);
-        
+
         // Cone math: Distance from Point to Line (Beam Axis)
         // We treat the beam as a cone volume.
         // Radius at distance d = d * tan(angle/2)
         const tanHalfAngle = Math.tan(angle / 2);
-        
+
         const cosAngle = Math.cos(angle / 2);
         const freezeDuration = lanternObj.userData.lanternFreezeDuration || 5.0;
-        
+
         enemies.forEach(enemy => {
-             // Flatten positions to XZ plane for easier aiming (ignore height diff)
-             const flatEnemyPos = new THREE.Vector3(enemy.position.x, 0, enemy.position.z);
-             const flatSpawnPos = new THREE.Vector3(spawnPos.x, 0, spawnPos.z);
-             const flatDir = new THREE.Vector3(dir.x, 0, dir.z).normalize();
-             
-             // Check vertical distance separately (increase tolerance)
-             if (Math.abs(enemy.position.y - spawnPos.y) > 5.0) return;
+            // Flatten positions to XZ plane for easier aiming (ignore height diff)
+            const flatEnemyPos = new THREE.Vector3(enemy.position.x, 0, enemy.position.z);
+            const flatSpawnPos = new THREE.Vector3(spawnPos.x, 0, spawnPos.z);
+            const flatDir = new THREE.Vector3(dir.x, 0, dir.z).normalize();
 
-             const toEnemy = flatEnemyPos.clone().sub(flatSpawnPos);
-             const dist = toEnemy.length(); 
-             
-             if (dist <= range + 2.0) { 
-                 // Project toEnemy onto dir to get distance along axis
-                 const distAlongAxis = toEnemy.dot(flatDir);
-                 
-                 // Debug Collision Math
-                 console.log(`Check ${enemy.name}: DistAxis=${distAlongAxis.toFixed(2)}, Range=${range}`);
-                 
-                 if (distAlongAxis > 0 && distAlongAxis <= range) {
-                     // Calculate closest point on axis
-                     const closestPointOnAxis = flatDir.clone().multiplyScalar(distAlongAxis).add(flatSpawnPos);
-                     const distFromAxis = flatEnemyPos.distanceTo(closestPointOnAxis);
-                     
-                     // Cone radius at this distance
-                     const coneRadius = distAlongAxis * Math.tan(angle / 2);
-                     const enemyRadius = 0.8; 
-                     const hitThreshold = coneRadius + enemyRadius;
-                     
-                     console.log(`  DistFromAxis=${distFromAxis.toFixed(2)}, Threshold=${hitThreshold.toFixed(2)}`);
+            // Check vertical distance separately (increase tolerance)
+            if (Math.abs(enemy.position.y - spawnPos.y) > 5.0) return;
 
-                     if (distFromAxis <= hitThreshold) {
-                         // HIT
-                         console.log("Lantern HIT:", enemy.name);
-                         const runtime = this.enemyRuntimeData.get(enemy.uuid);
-                         if (runtime) {
-                             runtime.freezeTimer = freezeDuration;
-                         }
-                     }
-                 }
-             }
+            const toEnemy = flatEnemyPos.clone().sub(flatSpawnPos);
+            const dist = toEnemy.length();
+
+            if (dist <= range + 2.0) {
+                // Project toEnemy onto dir to get distance along axis
+                const distAlongAxis = toEnemy.dot(flatDir);
+
+                // Debug Collision Math
+                console.log(`Check ${enemy.name}: DistAxis=${distAlongAxis.toFixed(2)}, Range=${range}`);
+
+                if (distAlongAxis > 0 && distAlongAxis <= range) {
+                    // Calculate closest point on axis
+                    const closestPointOnAxis = flatDir.clone().multiplyScalar(distAlongAxis).add(flatSpawnPos);
+                    const distFromAxis = flatEnemyPos.distanceTo(closestPointOnAxis);
+
+                    // Cone radius at this distance
+                    const coneRadius = distAlongAxis * Math.tan(angle / 2);
+                    const enemyRadius = 0.8;
+                    const hitThreshold = coneRadius + enemyRadius;
+
+                    console.log(`  DistFromAxis=${distFromAxis.toFixed(2)}, Threshold=${hitThreshold.toFixed(2)}`);
+
+                    if (distFromAxis <= hitThreshold) {
+                        // HIT
+                        console.log("Lantern HIT:", enemy.name);
+                        const runtime = this.enemyRuntimeData.get(enemy.uuid);
+                        if (runtime) {
+                            runtime.freezeTimer = freezeDuration;
+                        }
+                    }
+                }
+            }
         });
     }
 
     fireBullet(gunObj) {
         const bulletPower = gunObj.userData.bulletPower || 1;
         const bulletGlb = gunObj.userData.bulletGlb;
-        
+
         // Spawn position: in front of the player
         const spawnPos = new THREE.Vector3();
         gunObj.getWorldPosition(spawnPos);
-        
+
         const dir = new THREE.Vector3(0, 0, 1);
-        if (this.player.userData.typology === 'platform') {
+        const typology = this.player.userData.typology;
+        console.log("fireBullet - Typology:", typology);
+
+        if (typology === 'platform') {
             // In platform mode, direction is based on last move direction
             dir.set(this.lastMoveDir, 0, 0);
         } else {
-            // TPS/FPS mode: use player forward
+            // TPS/FPS/8WAY mode: use player forward
             this.player.getWorldDirection(dir);
         }
 
         const createMesh = (model) => {
-            const mesh = model || new THREE.Mesh(new THREE.SphereGeometry(0.1), new THREE.MeshBasicMaterial({color: 0xffff00}));
+            const mesh = model || new THREE.Mesh(new THREE.SphereGeometry(0.1), new THREE.MeshBasicMaterial({ color: 0xffff00 }));
             mesh.position.copy(spawnPos);
             this.app.sceneManager.scene.add(mesh);
             this.bullets.push({
@@ -712,14 +735,14 @@ export class GameManager {
             // Collision with Enemies
             const bBox = new THREE.Box3().setFromObject(b.mesh);
             const enemies = this.app.editor.objects.filter(o => o.userData.type === 'Enemy' && o.parent);
-            
+
             let hit = false;
             for (let enemy of enemies) {
                 const eBox = this.getCollisionBox(enemy);
                 if (bBox.intersectsBox(eBox)) {
                     // HIT!
                     enemy.userData.hp = (enemy.userData.hp || 1) - b.power;
-                    
+
                     const runtime = this.enemyRuntimeData.get(enemy.uuid);
                     const mixer = runtime ? runtime.mixer : null;
                     const clips = enemy.animations || (enemy.getObjectByName('model')?.animations) || [];
@@ -767,18 +790,18 @@ export class GameManager {
 
         catchers.forEach(base => {
             const baseBox = this.getCollisionBox(base);
-            
+
             enemies.forEach(enemy => {
-                if (this.translatingObjects.find(t => t.object === enemy)) return; 
+                if (this.translatingObjects.find(t => t.object === enemy)) return;
 
                 const eBox = this.getCollisionBox(enemy);
                 if (baseBox.intersectsBox(eBox)) {
                     const filter = base.userData.filterType || 'all';
-                    if (filter === 'all' || filter === 'enemy') { 
+                    if (filter === 'all' || filter === 'enemy') {
                         const target = this.app.editor.objects.find(t => t.userData.type === 'catcher_target' && t.userData.parentId === base.userData.id);
                         if (target) {
                             const moveType = base.userData.moveType || 'teleport';
-                            
+
                             if (moveType === 'translation') {
                                 this.translatingObjects.push({
                                     object: enemy,
@@ -793,7 +816,7 @@ export class GameManager {
                                 // Reset runtime velocity if physics
                                 const runtime = this.enemyRuntimeData.get(enemy.uuid);
                                 if (runtime) {
-                                    runtime.velocity.set(0,0,0);
+                                    runtime.velocity.set(0, 0, 0);
                                     // Optional: Update initialPos for patrol? 
                                     // If patrol is relative to initialPos, teleporting breaks it unless we update initialPos.
                                     runtime.initialPos.copy(target.position);
@@ -814,7 +837,7 @@ export class GameManager {
             if (o.userData.type === 'Enemy' || o.userData.type === 'Bonus' || o.userData.type === 'Model' || o.userData.type === 'PowerUp') {
                 const runtime = this.enemyRuntimeData.get(o.uuid) || this.bonusRuntimeData.get(o.uuid);
                 const mixer = runtime ? runtime.mixer : this.enemyMixers.find(m => m.getRoot() === o.getObjectByName('model') || m.getRoot() === o);
-                
+
                 if (mixer) {
                     const isFrozenEnemy = o.userData.type === 'Enemy' && runtime && runtime.frozen;
                     if (!isFrozenEnemy) mixer.update(dt);
@@ -823,16 +846,16 @@ export class GameManager {
 
             if (o.userData.type === 'Enemy') {
                 if (!o.parent) return; // Skip if removed
-                
+
                 const runtime = this.enemyRuntimeData.get(o.uuid);
                 if (!runtime) return;
-                
+
                 if (runtime.freezeTimer > 0) {
                     runtime.freezeTimer -= dt;
                     if (runtime.mixer) runtime.mixer.timeScale = 0; // Pause animation
                     return; // Skip movement logic
                 } else {
-                     if (runtime.mixer && runtime.mixer.timeScale === 0) runtime.mixer.timeScale = 1; // Resume
+                    if (runtime.mixer && runtime.mixer.timeScale === 0) runtime.mixer.timeScale = 1; // Resume
                 }
 
                 if (runtime.frozen) return;
@@ -842,36 +865,36 @@ export class GameManager {
                 const u = o.userData;
 
                 const speed = (u.speed || 2.0) * dt;
-                
+
                 // Physics Logic
                 if (u.hasPhysics && u.moveStyle !== 'patrol_up_down') {
                     runtime.velocity.y += this.gravity * dt;
-                    
+
                     // Raycast for Ground
                     const origin = o.position.clone();
-                    origin.y += 0.5; 
-                    
+                    origin.y += 0.5;
+
                     this.raycaster.set(origin, new THREE.Vector3(0, -1, 0));
-                    
-                    const targets = this.app.sceneManager.scene.children.filter(c => 
+
+                    const targets = this.app.sceneManager.scene.children.filter(c =>
                         c !== o && c !== this.player && !c.userData.isHelper && !c.userData.isCamera
                     );
-                    
+
                     const hits = this.raycaster.intersectObjects(targets, true);
-                    
+
                     let onGround = false;
                     if (hits.length > 0) {
                         const dist = hits[0].distance;
                         const heightHalf = (o.geometry?.parameters?.height || 0.8) / 2;
                         const threshold = 0.5 + heightHalf + 0.1;
-                        
+
                         if (dist <= threshold && runtime.velocity.y <= 0) {
                             o.position.y = hits[0].point.y + heightHalf;
                             runtime.velocity.y = 0;
                             onGround = true;
                         }
                     }
-                    
+
                     if (!onGround) {
                         o.position.y += runtime.velocity.y * dt;
                     }
@@ -883,14 +906,14 @@ export class GameManager {
                     const forward = new THREE.Vector3(0, 0, 1).applyQuaternion(o.quaternion);
                     o.position.add(forward.multiplyScalar(speed));
                     isMoving = true;
-                } 
+                }
                 else if (u.moveStyle === 'patrol_up_down') {
                     const range = u.patrolRange || 3.0;
                     const startY = runtime.initialPos.y;
-                    
+
                     o.position.y += speed * runtime.patrolDir;
                     isMoving = true;
-                    
+
                     if (o.position.y > startY + range) {
                         o.position.y = startY + range;
                         runtime.patrolDir = -1;
@@ -903,7 +926,7 @@ export class GameManager {
                     // Resolve Target
                     let targetObj = this.player;
                     let targetName = 'Player (Default)';
-                    
+
                     if (u.followerTarget && u.followerTarget.toLowerCase() !== 'player') {
                         const found = this.app.editor.objects.find(obj => obj.name === u.followerTarget || obj.userData.id === u.followerTarget || obj.uuid === u.followerTarget);
                         if (found) {
@@ -913,34 +936,34 @@ export class GameManager {
                             targetName = `${u.followerTarget} (Not Found)`;
                         }
                     }
-                    
+
                     // Debug Scale and Target (Throttled log? No, one-off check or filtered)
                     if (this.firstFrame) {
-                         console.log(`Enemy ${o.name} following: ${targetName}`);
-                         console.log(`Enemy Scale:`, o.scale.toArray());
+                        console.log(`Enemy ${o.name} following: ${targetName}`);
+                        console.log(`Enemy Scale:`, o.scale.toArray());
                     }
 
                     const dist = o.position.distanceTo(targetObj.position);
                     const detectRange = u.followerProximity || 5.0; // Detection Range
                     const stopDist = u.followerStopDist || 0.5; // Stop Distance
-                    
-                    if (dist <= detectRange) { 
+
+                    if (dist <= detectRange) {
                         // Stop Logic
                         let shouldStop = false;
                         if (dist <= stopDist) shouldStop = true;
-                        
+
                         // Collision Check
                         if (!shouldStop && u.followerStopCol) {
-                             const oBox = this.getCollisionBox(o);
-                             const tBox = this.getCollisionBox(targetObj);
-                             if (oBox.intersectsBox(tBox)) shouldStop = true;
+                            const oBox = this.getCollisionBox(o);
+                            const tBox = this.getCollisionBox(targetObj);
+                            if (oBox.intersectsBox(tBox)) shouldStop = true;
                         }
 
                         if (!shouldStop) {
                             isMoving = true;
                             const dir = new THREE.Vector3().subVectors(targetObj.position, o.position).normalize();
                             const move = dir.multiplyScalar(speed);
-                            
+
                             const tx = u.followerTransX !== false;
                             const ty = u.followerTransY !== false;
                             const tz = u.followerTransZ !== false;
@@ -948,7 +971,7 @@ export class GameManager {
                             if (tx) o.position.x += move.x;
                             if (ty) o.position.y += move.y;
                             if (tz) o.position.z += move.z;
-                            
+
                             const rx = u.followerRotX !== false;
                             const ry = u.followerRotY !== false;
                             const rz = u.followerRotZ !== false;
@@ -958,7 +981,7 @@ export class GameManager {
                                 if (ry && !rx && !rz) {
                                     targetPos.y = o.position.y;
                                 }
-                                
+
                                 // Safety check: if target is too close (degenerate vector), skip rotation
                                 if (o.position.distanceToSquared(targetPos) > 0.0001) {
                                     // Smooth Rotation
@@ -966,7 +989,7 @@ export class GameManager {
                                     dummy.up.copy(o.up);
                                     dummy.position.copy(o.position);
                                     dummy.lookAt(targetPos);
-                                    
+
                                     // Explicitly sync Euler from the calculated Quaternion
                                     dummy.rotation.setFromQuaternion(dummy.quaternion);
 
@@ -976,7 +999,7 @@ export class GameManager {
                                     if (!rx) dummy.rotation.x = initRot.x;
                                     if (!ry) dummy.rotation.y = initRot.y;
                                     if (!rz) dummy.rotation.z = initRot.z;
-                                    
+
                                     // Recalculate target Quaternion from constrained Euler
                                     const targetQ = new THREE.Quaternion().setFromEuler(dummy.rotation);
                                     o.quaternion.slerp(targetQ, 5.0 * dt);
@@ -1008,7 +1031,7 @@ export class GameManager {
                     if (runtime.currentAnim !== 'Hit' && runtime.currentAnim !== 'Death') {
                         // Use Move animation if isMoving is true, otherwise Idle
                         let desiredAnim = isMoving ? u.animMove : u.animIdle;
-                        
+
                         let shouldSwitch = false;
                         if (desiredAnim !== runtime.currentAnim) {
                             shouldSwitch = true;
@@ -1051,13 +1074,13 @@ export class GameManager {
                 if (u.moveStyle === 'forward') {
                     const forward = new THREE.Vector3(0, 0, 1).applyQuaternion(o.quaternion);
                     o.position.add(forward.multiplyScalar(speed));
-                } 
+                }
                 else if (u.moveStyle === 'patrol_up_down') {
                     const range = u.patrolRange || 3.0;
                     const startY = runtime.initialPos.y;
-                    
+
                     o.position.y += speed * runtime.patrolDir;
-                    
+
                     if (o.position.y > startY + range) {
                         o.position.y = startY + range;
                         runtime.patrolDir = -1;
@@ -1093,11 +1116,11 @@ export class GameManager {
             if (collided) {
                 if (o.userData.type === 'Collision') {
                     if (o.userData.triggered && o.userData.oneShot) return;
-                    
+
                     o.userData.triggered = true;
                     const action = o.userData.actionType || 'restart';
                     const value = o.userData.actionValue;
-                    
+
                     console.log(`[Collision] Triggered: ${action} | Targets: ${o.userData.actionTargets?.join(', ') || o.userData.actionTarget || 'None'}`);
 
                     if (action === 'restart') {
@@ -1116,72 +1139,74 @@ export class GameManager {
                     } else if (action === 'alert') {
                         this.showMessage(value || "Triggered!");
                     } else if (action === 'hide_object') {
-                         const targets = o.userData.actionTargets || (o.userData.actionTarget ? [o.userData.actionTarget] : []);
-                         targets.forEach(targetName => {
-                             const target = this.app.editor.objects.find(obj => 
-                                 obj.name === targetName.trim() || 
-                                 obj.userData.id === targetName.trim()
-                             );
-                             if (target) {
-                                 target.visible = false;
-                                 target.updateMatrixWorld(true);
-                             }
-                         });
+                        const targets = o.userData.actionTargets || (o.userData.actionTarget ? [o.userData.actionTarget] : []);
+                        targets.forEach(targetName => {
+                            const target = this.app.editor.objects.find(obj =>
+                                obj.name === targetName.trim() ||
+                                obj.userData.id === targetName.trim()
+                            );
+                            if (target) {
+                                target.visible = false;
+                                target.updateMatrixWorld(true);
+                            }
+                        });
                     } else if (action === 'play_anim' || action === 'unfreeze') {
-                         const targetNames = o.userData.actionTargets || (o.userData.actionTarget ? [o.userData.actionTarget] : []);
-                         const val = value ? value.trim() : null;
-                         
-                         targetNames.forEach(targetName => {
-                             const target = this.app.editor.objects.find(obj => 
-                                 obj.name === targetName.trim() || 
-                                 obj.userData.id === targetName.trim()
-                             );
-                             if (target) {
-                                 let tMixer = null;
-                                 if (target.userData.type === 'Enemy') {
-                                     const runtime = this.enemyRuntimeData.get(target.uuid);
-                                     if (runtime) {
-                                         tMixer = runtime.mixer;
-                                         runtime.frozen = false; // Activation!
-                                         console.log(`[Collision] Unfrozen enemy: ${target.name}`);
-                                     }
-                                 } else {
-                                     tMixer = this.enemyMixers.find(m => {
-                                         const root = m.getRoot();
-                                         return root === target || root === target.getObjectByName('model') || root.parent === target;
-                                     });
-                                 }
-                                 
-                                 if (tMixer) {
-                                     const clips = target.animations || (target.getObjectByName('model')?.animations) || [];
-                                     // Determine which animation to play
-                                     // If unfreeze and no specific value, use the default move animation
-                                     let clipName = (action === 'play_anim') ? val : (val || target.userData.animMove);
-                                     
-                                     if (clipName) {
-                                         const clip = clips.find(c => c.name === clipName) || clips.find(c => c.name.toLowerCase() === clipName.toLowerCase());
-                                         if (clip) {
-                                             tMixer.stopAllAction();
-                                             const animAction = tMixer.clipAction(clip);
-                                             animAction.reset();
-                                             animAction.play();
-                                             
-                                             const runtime = this.enemyRuntimeData.get(target.uuid) || this.bonusRuntimeData.get(target.uuid);
-                                             if (runtime) runtime.currentAnim = clipName;
-                                         }
-                                     }
-                                 }
-                             }
-                         });
+                        const targetNames = o.userData.actionTargets || (o.userData.actionTarget ? [o.userData.actionTarget] : []);
+                        const val = value ? value.trim() : null;
+
+                        targetNames.forEach(targetName => {
+                            const target = this.app.editor.objects.find(obj =>
+                                obj.name === targetName.trim() ||
+                                obj.userData.id === targetName.trim()
+                            );
+                            if (target) {
+                                let tMixer = null;
+                                if (target.userData.type === 'Enemy') {
+                                    const runtime = this.enemyRuntimeData.get(target.uuid);
+                                    if (runtime) {
+                                        tMixer = runtime.mixer;
+                                        runtime.frozen = false; // Activation!
+                                        console.log(`[Collision] Unfrozen enemy: ${target.name}`);
+                                    }
+                                } else {
+                                    tMixer = this.enemyMixers.find(m => {
+                                        const root = m.getRoot();
+                                        return root === target || root === target.getObjectByName('model') || root.parent === target;
+                                    });
+                                }
+
+                                if (tMixer) {
+                                    const clips = target.animations || (target.getObjectByName('model')?.animations) || [];
+                                    // Determine which animation to play
+                                    // If unfreeze and no specific value, use the default move animation
+                                    let clipName = (action === 'play_anim') ? val : (val || target.userData.animMove);
+
+                                    if (clipName) {
+                                        const clip = clips.find(c => c.name === clipName) || clips.find(c => c.name.toLowerCase() === clipName.toLowerCase());
+                                        if (clip) {
+                                            tMixer.stopAllAction();
+                                            const animAction = tMixer.clipAction(clip);
+                                            animAction.reset();
+                                            animAction.play();
+
+                                            const runtime = this.enemyRuntimeData.get(target.uuid) || this.bonusRuntimeData.get(target.uuid);
+                                            if (runtime) runtime.currentAnim = clipName;
+                                        }
+                                    }
+                                }
+                            }
+                        });
                     }
                 } else if (o.userData.type === 'PowerUp') {
+                    if (o.userData.collected) return;
                     try {
+                        o.userData.collected = true;
                         const pType = o.userData.powerType || 'none';
                         console.log("Picking up PowerUp:", o.name, "Type:", pType);
-                        
+
                         // Attach to Player
                         const playerModel = this.player.getObjectByName('model') || this.player;
-                        
+
                         // Cycle Check: Ensure playerModel is not inside o
                         let ancestor = playerModel;
                         let cycleFound = false;
@@ -1198,14 +1223,16 @@ export class GameManager {
                         // Detach from scene, attach to player
                         o.removeFromParent();
                         playerModel.add(o);
-                        
-                                            // If it is a Lantern, hide it initially
-                                            if (pType === 'lantern') {
-                                                o.visible = false;
-                                                this.safeTraverse(o, c => { if (c.isMesh) c.frustumCulled = false; });
-                                            } else {
-                                                o.visible = true; // Guns etc remain visible
-                                            }                        
+                        console.log(`PowerUp Attached to: ${playerModel.name} | UUID: ${playerModel.uuid} | Object: ${o.name}`);
+                        o.updateMatrixWorld(true);
+
+                        // If it is a Lantern, hide it initially
+                        if (pType === 'lantern') {
+                            o.visible = false;
+                            this.safeTraverse(o, c => { if (c.isMesh) c.frustumCulled = false; });
+                        } else {
+                            o.visible = true; // Guns etc remain visible
+                        }
                         // Disable collision checks against this object
                         o.userData.isAsset = false;
 
@@ -1225,13 +1252,60 @@ export class GameManager {
                                 }
                             }
                         }
-                        
-                        // Duration
-                        if (o.userData.duration > 0) {
-                            setTimeout(() => {
-                                if (o.parent) o.removeFromParent();
-                            }, o.userData.duration * 1000);
+
+                        // Activate Fly Mode
+                        if (pType === 'fly') {
+                            // Clear existing timer to prevent early reset
+                            if (this.flyTimer) clearTimeout(this.flyTimer);
+
+                            this.player.userData.mode = 'fly';
+                            this.player.userData.flyAnim = o.userData.flyAnim;
+
+                            // Only set startFlyY if not already flying, to preserve original ground level
+                            if (this.player.userData.startFlyY === undefined) {
+                                this.player.userData.startFlyY = this.player.position.y;
+                            }
+
+                            this.player.userData.flyHeight = (o.userData.flyHeight || 3.0);
+
+                            const duration = (o.userData.duration || 10) * 1000;
+                            this.showMessage("FLY MODE ACTIVATED!", duration);
+
+                            // Boost start
+                            this.velocity.y = (o.userData.flyBoost || 10.0);
+                            this.player.position.y += 0.5;
+                            this.onGround = false;
+
+                            // Set robust timer
+                            this.flyTimer = setTimeout(() => {
+                                this.flyTimer = null;
+                                if (this.player && this.player.userData.mode === 'fly') {
+                                    this.player.userData.mode = 'normal';
+                                    this.player.userData.flyAnim = null;
+
+                                    // Feather Fall instead of teleport
+                                    this.player.userData.featherFall = true;
+                                    this.player.userData.startFlyY = undefined; // Clear tracking
+
+                                    this.onGround = false;
+                                    this.velocity.y = -1; // Start gentle descent   
+                                    this.showMessage("Flight Ended!", 2000);
+                                }
+                            }, duration);
+
+                            // Consume Fly PowerUp (don't keep it attached)
+                            if (o.parent) o.removeFromParent();
                         }
+
+                        // Remove object from scene only if it wasn't attached to player
+                        // IF we attached it to player, o.parent is playerModel.
+                        // IF we didn't (e.g. instant effect?), we should have removed it.
+                        // But wait, the code above `playerModel.add(o)` ALWAYS runs for PowerUp (lines 1229-1231).
+                        // So o.parent is ALWAYS playerModel here.
+                        // So `o.removeFromParent()` ALWAYS detaches it.
+                        // DELETING THIS BLOCK.
+
+                        // (No operation needed here, the object is now part of the player)
                     } catch (err) {
                         console.error("Error picking up PowerUp:", err);
                     }
@@ -1241,7 +1315,7 @@ export class GameManager {
 
                     this.score += (o.userData.points || 100);
                     this.updateHUD();
-                    
+
                     const u = o.userData;
                     const runtime = this.bonusRuntimeData.get(o.uuid);
                     const mixer = runtime ? runtime.mixer : null;
@@ -1307,7 +1381,7 @@ export class GameManager {
                                 } else {
                                     this.player.position.copy(targetPos);
                                     this.player.rotation.copy(target.rotation);
-                                    
+
                                     const state = this.playStartStates.find(s => s.uuid === this.player.uuid);
                                     if (state) state.p.copy(this.player.position);
                                 }
@@ -1316,10 +1390,17 @@ export class GameManager {
                     }
                 } else if (o.userData.type === 'Enemy' || o.userData.type === 'Boss') {
                     // Stomp Check
-                    const feetY = pBox.min.y; 
+                    const feetY = pBox.min.y;
                     // Relaxed Check: If feet are above the enemy's center, consider it "Above"
                     // This handles fast falling where the player might penetrate deep into the hitbox in one frame.
                     const isAbove = feetY >= o.position.y;
+
+                    // Fly Mode Invincibility against Normal/Boss enemies (unless Boss has special tag? User said "normal enemies")
+                    // Let's assume Invincible to all for now as per "enemies normali non pssono colpire"
+                    // If we distinguish Boss later, we can check o.userData.type
+                    if (this.player.userData.mode === 'fly') {
+                        return; // Invincible!
+                    }
 
                     if (isAbove) {
                         // ...
@@ -1329,7 +1410,7 @@ export class GameManager {
                             const pSize = pBox.getSize(new THREE.Vector3());
                             console.warn(`DAMAGED BY: ${o.name} | Dist: ${o.position.distanceTo(this.player.position).toFixed(2)}`);
                             console.log(`Player Hitbox Size: ${pSize.x.toFixed(2)}, ${pSize.y.toFixed(2)}, ${pSize.z.toFixed(2)}`);
-                            
+
                             // Debug: Show BOTH hitboxes
                             if (!o.userData.debugBox) {
                                 const helperO = new THREE.Box3Helper(oBox, 0xff0000);
@@ -1337,9 +1418,9 @@ export class GameManager {
                                 this.app.sceneManager.scene.add(helperO);
                                 this.app.sceneManager.scene.add(helperP);
                                 o.userData.debugBox = helperO;
-                                setTimeout(() => { 
-                                    if(helperO.parent) helperO.parent.remove(helperO); 
-                                    if(helperP.parent) helperP.parent.remove(helperP); 
+                                setTimeout(() => {
+                                    if (helperO.parent) helperO.parent.remove(helperO);
+                                    if (helperP.parent) helperP.parent.remove(helperP);
                                     o.userData.debugBox = null;
                                 }, 2000);
                             }
@@ -1348,9 +1429,9 @@ export class GameManager {
                             this.updateHUD();
                             this.invulnerabilityTimer = 2.0; // 2 seconds iFrames
                             if (this.lives <= 0) { alert("GAME OVER"); this.stop(); }
-                            else { 
-                                this.velocity.y = 15; 
-                                this.player.position.y += 0.2; 
+                            else {
+                                this.velocity.y = 15;
+                                this.player.position.y += 0.2;
                                 // Knockback
                                 const knockDir = this.player.position.clone().sub(o.position).normalize();
                                 knockDir.y = 0;
@@ -1367,7 +1448,7 @@ export class GameManager {
         if (this.translatingObjects.find(t => t.object === this.player)) return;
 
         const u = this.player.userData;
-        
+
         // DEBUG F KEY
         if (this.keys.has('f')) {
             // console.log("DEBUG: F pressed");
@@ -1376,7 +1457,7 @@ export class GameManager {
             // console.log("ActionLocked:", this.actionLocked);
         }
 
-        const speed = (u.speed || 5.0); 
+        const speed = (u.speed || 5.0);
         const jumpForce = (u.jumpForce || 15.0);
 
         // Initialize physics parameters at the very start
@@ -1387,14 +1468,51 @@ export class GameManager {
             ph = (p.length || p.height || 1.0) + pr * 2;
         }
 
-        // 1. Gravity
-        if (!this.onGround) this.velocity.y += this.gravity * dt;
-        else this.velocity.y = 0;
+        // 1. Gravity and Flight Logic
+        let requestedAnim = null; // Declare here
 
-        let requestedAnim = null;
+        if (u.mode === 'fly') {
+            // Constant Hover at Fixed Height
+            const targetH = (u.flyHeight !== undefined ? u.flyHeight : 3.0);
+            const targetABS = (u.startFlyY || 0) + targetH;
+
+            // DEBUG: Trace Fly Height
+            if (Math.random() < 0.05) console.log(`[FlyHeightDebug] H_Param: ${u.flyHeight} | TargetH: ${targetH} | StartY: ${u.startFlyY} | CurY: ${this.player.position.y.toFixed(2)} | TargetABS: ${targetABS.toFixed(2)}`);
+
+            // Proportional Control for Smooth Height
+            const diff = targetABS - this.player.position.y;
+            // damping / speed factor
+            this.velocity.y = diff * 2.0;
+
+
+            // Override animation if Fly anim is set
+            // if (u.flyAnim) requestedAnim = u.flyAnim; // REMOVED: Only play on move
+
+        } else {
+            if (!this.onGround) {
+                if (u.featherFall) {
+                    // Feather Fall: Reduced Gravity & Terminal Velocity
+                    // Gravity is -35, so * 0.1 is -3.5. 
+                    this.velocity.y += (this.gravity * 0.1) * dt;
+                    // Clamp to slow fall (e.g. -2)
+                    this.velocity.y = Math.max(this.velocity.y, -3.0);
+                } else {
+                    this.velocity.y += this.gravity * dt;
+                }
+                // DEBUG: Trace Gravity
+                // if (Math.random() < 0.05) console.log(`[GravityDebug] OnGround: ${this.onGround} | VelY: ${this.velocity.y.toFixed(2)} | Gravity: ${this.gravity}`);
+            }
+            else this.velocity.y = 0;
+        }
+
         const moveDir = new THREE.Vector3();
 
         (u.actions || []).forEach(action => {
+            // DEBUG: Check for F key
+            if (this.keys.has('f')) {
+                console.log(`Key 'f' pressed. Checking Action: ${action.name} Type: ${action.type} Key: ${action.key} Active: ${action.active}`);
+            }
+
             if (!action.active) return;
             if (this.keys.has(action.key.toLowerCase())) {
                 if (action.type === 'Walk' || action.type === 'Run') {
@@ -1408,6 +1526,9 @@ export class GameManager {
                     }
                 }
                 if (action.type === 'Jump') {
+                    // Prevent Jump in Fly mode (Flight controls take over)
+                    if (u.mode === 'fly') return;
+
                     const maxJumps = u.doubleJump ? 2 : 1;
                     if (this.jumpCount < maxJumps && !this.jumpLocked) {
                         this.velocity.y = jumpForce;
@@ -1416,41 +1537,54 @@ export class GameManager {
                         this.jumpLocked = true;
                     }
                 }
-                if (action.type === 'Shooting' && !this.actionLocked) {
-                    console.log("Shooting Action Triggered");
-                    const model = this.player.getObjectByName('model') || this.player;
-                    
-                    // Recursive find for PowerUp (in case it attached to a Bone or sub-node)
-                    let equipped = null;
-                    this.safeTraverse(this.player, c => {
-                        if (equipped) return;
-                        if (c.userData.type === 'PowerUp') equipped = c;
-                    });
-                    
-                    console.log("Equipped found (recursive):", equipped);
-                    
-                    if (equipped) {
-                        console.log("PowerType:", equipped.userData.powerType);
-                        if (equipped.userData.powerType === 'gun') {
-                            this.fireBullet(equipped);
-                            this.actionLocked = true;
-                        } else if (equipped.userData.powerType === 'lantern') {
-                             console.log("Lantern Cooldown:", this.lanternCooldownTimer);
-                             if (isNaN(this.lanternCooldownTimer)) this.lanternCooldownTimer = 0;
-                             
-                             if (this.lanternCooldownTimer <= 0) {
-                                 this.useLantern(equipped);
-                                 this.actionLocked = true;
-                                 // Player stays still for 1 second
-                                 setTimeout(() => { this.actionLocked = false; }, 1000);
-                             } else {
-                                 // Optional: Play "cooldown" sound or feedback?
-                             }
+                if (action.type === 'Shooting') {
+                    if (!this.actionLocked) {
+                        const model = this.player.getObjectByName('model') || this.player;
+
+                        // Recursive find for PowerUp (in case it attached to a Bone or sub-node)
+                        let equipped = null;
+
+                        // Explicit check on model children first
+                        if (model && model.children) {
+                            equipped = model.children.find(c => c.userData.type === 'PowerUp');
+                        }
+
+                        // Fallback: Full Search if direct failed
+                        if (!equipped) {
+                            this.safeTraverse(this.player, c => {
+                                if (equipped) return;
+                                if (c && c.userData && c.userData.type === 'PowerUp') equipped = c;
+                            });
+                        }
+
+                        console.log("Equipped found:", equipped ? equipped.userData.powerType : "NONE");
+
+                        if (equipped) {
+                            console.log("PowerType:", equipped.userData.powerType);
+
+                            if (equipped.userData.powerType === 'gun') {
+                                this.fireBullet(equipped);
+                                this.actionLocked = true;
+                            } else if (equipped.userData.powerType === 'lantern') {
+                                console.log("Lantern Cooldown:", this.lanternCooldownTimer);
+                                if (isNaN(this.lanternCooldownTimer)) this.lanternCooldownTimer = 0;
+
+                                if (this.lanternCooldownTimer <= 0) {
+                                    this.useLantern(equipped);
+                                    this.actionLocked = true;
+                                    // Player stays still for 1 second
+                                    setTimeout(() => { this.actionLocked = false; }, 1000);
+                                } else {
+                                    console.log("Lantern on Cooldown!");
+                                }
+                            } else if (equipped.userData.powerType === 'fly') {
+                                // Already handled in mode check?
+                            }
                         }
                     }
                 }
-                if (action.anim) requestedAnim = action.anim;
             }
+            if (action.anim) requestedAnim = action.anim;
         });
 
         // SHOOTING Key Release Check
@@ -1464,7 +1598,7 @@ export class GameManager {
         if (jumpAction && !this.keys.has(jumpAction.key.toLowerCase())) {
             this.jumpLocked = false;
         }
-        
+
         // ... (rest of function)
 
 
@@ -1473,25 +1607,25 @@ export class GameManager {
         if (u.typology === '8WAY' || ((camType === 'TPS' || camType === 'FPS') && u.typology !== 'platform')) {
             let yaw = 0;
             if (u.typology === '8WAY') {
-                 // Robust Yaw Calculation (Vector-based to avoid Gimbal Lock)
-                 const q = this.app.sceneManager.camera.quaternion;
-                 const forward = new THREE.Vector3(0, 0, -1).applyQuaternion(q);
-                 
-                 // If looking mostly horizontal, use Forward vector
-                 if (Math.abs(forward.y) < 0.99) {
-                     yaw = Math.atan2(forward.x, forward.z) - Math.PI;
-                 } else {
-                     // If looking straight Up/Down, use Up vector to determine orientation
-                     const up = new THREE.Vector3(0, 1, 0).applyQuaternion(q);
-                     yaw = Math.atan2(up.x, up.z) - Math.PI;
-                 }
+                // Robust Yaw Calculation (Vector-based to avoid Gimbal Lock)
+                const q = this.app.sceneManager.camera.quaternion;
+                const forward = new THREE.Vector3(0, 0, -1).applyQuaternion(q);
+
+                // If looking mostly horizontal, use Forward vector
+                if (Math.abs(forward.y) < 0.99) {
+                    yaw = Math.atan2(forward.x, forward.z) - Math.PI;
+                } else {
+                    // If looking straight Up/Down, use Up vector to determine orientation
+                    const up = new THREE.Vector3(0, 1, 0).applyQuaternion(q);
+                    yaw = Math.atan2(up.x, up.z) - Math.PI;
+                }
             } else {
-                 yaw = this.mouseRotation.x;
+                yaw = this.mouseRotation.x;
             }
 
             const camQuat = new THREE.Quaternion().setFromEuler(new THREE.Euler(0, yaw, 0, 'YXZ'));
             moveDir.applyQuaternion(camQuat);
-            
+
             // Rotate player to look in the movement direction
             if (moveDir.length() > 0) {
                 const targetRotation = new THREE.Quaternion().setFromEuler(new THREE.Euler(0, Math.atan2(moveDir.x, moveDir.z), 0, 'YXZ'));
@@ -1505,8 +1639,8 @@ export class GameManager {
         }
 
         // 2. Horizontal Blocking (Ray-based - enhanced with BVH implicitly via raycast)
-        const obstacles = this.app.sceneManager.scene.children.filter(o => 
-            o !== this.player && !o.userData.isHelper && !o.userData.isCamera && 
+        const obstacles = this.app.sceneManager.scene.children.filter(o =>
+            o !== this.player && !o.userData.isHelper && !o.userData.isCamera &&
             !o.userData.isTrigger && !o.userData.noCollision && // Exclude Triggers and NoCollision
             o.userData.type !== 'Bonus' && o.userData.type !== 'Goal' && o.userData.type !== 'catcher_base' && o.userData.type !== 'catcher_target' && o.userData.type !== 'Catcher'
         );
@@ -1517,7 +1651,7 @@ export class GameManager {
             const waistPos = this.player.position.clone().add(new THREE.Vector3(0, 0.5, 0));
             this.raycaster.set(waistPos, moveDir);
             const hits = this.raycaster.intersectObjects(obstacles, true);
-            
+
             // Wall Sliding
             if (hits.length > 0 && hits[0].distance < 0.6 && hits[0].face) {
                 const normal = hits[0].face.normal.clone().applyQuaternion(hits[0].object.quaternion);
@@ -1526,7 +1660,7 @@ export class GameManager {
                     moveDir.sub(normal.multiplyScalar(dot));
                 }
             }
-            
+
             this.player.position.add(moveDir.multiplyScalar(speed * dt));
         }
 
@@ -1540,8 +1674,8 @@ export class GameManager {
         const model = this.player.getObjectByName('model');
         if (model) {
             if (u.typology === 'platform') {
-                 // Side View Logic: use last direction persistently
-                 model.rotation.y = (this.lastMoveDir === -1) ? -Math.PI/2 : Math.PI/2;
+                // Side View Logic: use last direction persistently
+                model.rotation.y = (this.lastMoveDir === -1) ? -Math.PI / 2 : Math.PI / 2;
             }
         }
 
@@ -1561,8 +1695,8 @@ export class GameManager {
         ];
 
         // Collide with EVERYTHING except player and specific triggers (and enemies for grounding)
-        const allTargets = this.app.sceneManager.scene.children.filter(o => 
-            o !== this.player && !o.userData.isHelper && !o.userData.isCamera && 
+        const allTargets = this.app.sceneManager.scene.children.filter(o =>
+            o !== this.player && !o.userData.isHelper && !o.userData.isCamera &&
             !o.userData.isTrigger && !o.userData.noCollision && // Exclude Triggers and NoCollision
             o.userData.type !== 'Bonus' && o.userData.type !== 'Goal' && o.userData.type !== 'Enemy' && o.userData.type !== 'Boss' && o.userData.type !== 'catcher_base' && o.userData.type !== 'catcher_target' && o.userData.type !== 'Catcher'
         );
@@ -1570,9 +1704,9 @@ export class GameManager {
         groundRays.forEach(off => {
             const origin = this.player.position.clone().add(off);
             origin.y += 2.0; // Start from head level
-            this.raycaster.set(origin, new THREE.Vector3(0,-1,0));
+            this.raycaster.set(origin, new THREE.Vector3(0, -1, 0));
             const hits = this.raycaster.intersectObjects(allTargets, true);
-            
+
             if (hits.length > 0) {
                 // Filter hits to find the highest solid ground below the player's "step up" height
                 for (let hit of hits) {
@@ -1585,16 +1719,18 @@ export class GameManager {
         });
 
         // Snap to ground with a bit more tolerance (0.2)
-        if (groundY > -Infinity && (this.player.position.y - groundY <= (ph/2 + 0.2)) && this.velocity.y <= 0) {
+        if (groundY > -Infinity && (this.player.position.y - groundY <= (ph / 2 + 0.2)) && this.velocity.y <= 0) {
             // Prevent initial pop-up on first frame
             if (this.firstFrame) {
                 this.onGround = true;
                 this.velocity.y = 0;
                 this.jumpCount = 0;
+                u.featherFall = false;
             } else {
-                this.player.position.y = groundY + ph/2;
+                this.player.position.y = groundY + ph / 2;
                 this.onGround = true; this.velocity.y = 0;
                 this.jumpCount = 0;
+                u.featherFall = false;
             }
         } else this.onGround = false;
 
@@ -1604,19 +1740,30 @@ export class GameManager {
             if (start) this.player.position.z = start.p.z;
         }
 
+
         // Anims Priority Logic
         let finalAnim = requestedAnim;
 
         // 1. Jump Priority
-        if (!this.onGround) {
+        if (!this.onGround && u.mode !== 'fly') {
             const jumpAction = (u.actions || []).find(a => a.type === 'Jump' && a.anim && a.active);
             if (jumpAction) finalAnim = jumpAction.anim;
         }
 
         // 2. Movement Fallback
-        if (!finalAnim && moveDir.length() > 0) {
-            const moveAction = (u.actions || []).find(a => (a.type === 'Walk' || a.type === 'Run') && a.anim && a.active);
-            if (moveAction) finalAnim = moveAction.anim;
+        if (moveDir.length() > 0) {
+            if (u.mode === 'fly') {
+                if (u.flyAnim) finalAnim = u.flyAnim;
+                else {
+                    // Fallback to generic Fly action if no custom anim
+                    const flyAction = (u.actions || []).find(a => a.type === 'Fly' && a.active);
+                    if (flyAction && flyAction.anim) finalAnim = flyAction.anim;
+                }
+            } else {
+                // Normal Walk/Run
+                const moveAction = (u.actions || []).find(a => (a.type === 'Walk' || a.type === 'Run') && a.anim && a.active);
+                if (moveAction) finalAnim = moveAction.anim;
+            }
         }
 
         // 3. Idle Fallback
@@ -1624,6 +1771,7 @@ export class GameManager {
             const idleAction = (u.actions || []).find(a => a.type === 'Idle' && a.anim && a.active);
             if (idleAction) finalAnim = idleAction.anim;
         }
+
 
         if (finalAnim) {
             this.playAnim(finalAnim);
@@ -1648,13 +1796,13 @@ export class GameManager {
         const type = this.gameCameraObj.userData.type || 'TPS';
         // console.log("Cam Type:", type); // Debug
         if (type === 'FIXED') return;
-        
+
         const cam = this.app.sceneManager.camera;
 
         if (type === 'TPS') {
             const distance = this.cameraDistance || 5;
             const orbitQuat = new THREE.Quaternion().setFromEuler(new THREE.Euler(this.mouseRotation.y, this.mouseRotation.x, 0, 'YXZ'));
-            
+
             // Look target: precisely at player's center height
             let ph = 2.0;
             if (this.player.geometry?.parameters) {
@@ -1662,24 +1810,24 @@ export class GameManager {
                 ph = (p.length || p.height || 1.0) + (p.radius || 0.5) * 2;
             }
             const targetPos = this.player.position.clone(); // The position is already the center of the capsule in Three.js
-            
+
             const offset = new THREE.Vector3(0, 0, distance).applyQuaternion(orbitQuat);
             const desiredPos = targetPos.clone().add(offset);
-            
+
             // Camera Collision
             const dir = offset.clone().normalize();
             this.raycaster.set(targetPos, dir);
-            const obstacles = this.app.sceneManager.scene.children.filter(o => 
+            const obstacles = this.app.sceneManager.scene.children.filter(o =>
                 o !== this.player && !o.userData.isHelper && !o.userData.isCamera && o.isMesh && o.visible && o.name !== 'Floor'
             );
             const hits = this.raycaster.intersectObjects(obstacles, true);
-            
+
             if (hits.length > 0 && hits[0].distance < distance) {
                 cam.position.copy(hits[0].point).add(dir.multiplyScalar(-0.2));
             } else {
                 cam.position.copy(desiredPos);
             }
-            
+
             cam.lookAt(targetPos);
         } else if (type === 'FPS') {
             const headPos = this.player.position.clone().add(new THREE.Vector3(0, 1.8, 0));

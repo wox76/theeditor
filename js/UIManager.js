@@ -7,7 +7,7 @@ export class UIManager {
     constructor(app) {
         this.app = app;
         this.actionTypes = ['Idle', 'Walk', 'Run', 'Jump', 'Death', 'Attack', 'Shooting'];
-        this.library = []; 
+        this.library = [];
         this.isDropping = false;
         this.thumbRenderer = null;
     }
@@ -24,25 +24,25 @@ export class UIManager {
     rebuildLibrary() {
         const newLib = [];
         this.app.editor.objects.forEach(obj => {
-             if (obj.userData.isAsset || obj.userData.isPlayer) {
-                 const name = obj.name;
-                 const type = obj.userData.type || (obj.userData.isPlayer ? 'Player' : 'Unknown');
-                 const data = obj.userData.glbSource || null;
-                 const defaultAnim = obj.userData.defaultAnim || null;
-                 
-                 const exists = newLib.find(i => i.name === name && i.type === type && i.data === data);
-                 if (!exists) {
-                     newLib.push({ name, type, data, defaultAnim });
-                 }
-             }
+            if (obj.userData.isAsset || obj.userData.isPlayer) {
+                const name = obj.name;
+                const type = obj.userData.type || (obj.userData.isPlayer ? 'Player' : 'Unknown');
+                const data = obj.userData.glbSource || null;
+                const defaultAnim = obj.userData.defaultAnim || null;
+
+                const exists = newLib.find(i => i.name === name && i.type === type && i.data === data);
+                if (!exists) {
+                    newLib.push({ name, type, data, defaultAnim });
+                }
+            }
         });
-        
+
         const playerIdx = newLib.findIndex(i => i.type === 'Player');
         if (playerIdx > 0) {
             const p = newLib.splice(playerIdx, 1)[0];
             newLib.unshift(p);
         }
-        
+
         this.library = newLib;
         this.restoreLibrary(this.library);
     }
@@ -103,13 +103,13 @@ export class UIManager {
             const data = e.dataTransfer.getData('asset-data');
             const name = e.dataTransfer.getData('asset-name');
             const defaultAnim = e.dataTransfer.getData('asset-default-anim');
-            
+
             if (name) {
-                 const sourceObj = this.app.editor.objects.find(o => o.name === name);
-                 if (sourceObj) {
-                     this.app.editor.duplicateObject(sourceObj, e.clientX, e.clientY);
-                     return;
-                 }
+                const sourceObj = this.app.editor.objects.find(o => o.name === name);
+                if (sourceObj) {
+                    this.app.editor.duplicateObject(sourceObj, e.clientX, e.clientY);
+                    return;
+                }
             }
 
             if (type) this.app.editor.spawnAsset(type, data, e.clientX, e.clientY, defaultAnim);
@@ -126,7 +126,7 @@ export class UIManager {
         const card = document.createElement('div');
         // ... (rest of function)
         card.className = 'asset-card'; card.draggable = true;
-        
+
         let color = '#555', icon = '📦';
         if (type === 'Enemy') color = '#ff6600', icon = '👿';
         if (type === 'Bonus') color = '#FFD700', icon = '⭐';
@@ -139,7 +139,7 @@ export class UIManager {
         if (type === 'Model') color = '#2f5d8e', icon = '🧊';
 
         card.style.borderColor = color;
-        const thumbId = `thumb-${Math.floor(Math.random()*1000000)}`;
+        const thumbId = `thumb-${Math.floor(Math.random() * 1000000)}`;
         card.innerHTML = `
             <div class="asset-icon" id="icon-${thumbId}">${icon}</div>
             <div style="font-size:9px; font-weight:bold; color:#888; margin-top:4px;">${type}</div>
@@ -207,7 +207,7 @@ export class UIManager {
         document.getElementById('btn-scale').onclick = () => { this.app.editor.gizmo.setMode('scale'); this.setActiveTool('btn-scale'); };
         document.getElementById('btn-delete').onclick = () => this.app.editor.deleteSelected();
         document.getElementById('btn-save').onclick = () => this.app.editor.saveProject();
-        
+
         document.getElementById('snap-trans').onchange = (e) => this.app.editor.setTranslationSnap(e.target.checked);
         document.getElementById('snap-rot').onchange = (e) => this.app.editor.setRotationSnap(e.target.checked);
         document.getElementById('snap-scale').onchange = (e) => this.app.editor.setScaleSnap(e.target.checked);
@@ -221,7 +221,7 @@ export class UIManager {
                     const btnPlay = document.getElementById('btn-play');
                     if (btnPlay) btnPlay.classList.remove('play-active');
                 }
-                return; 
+                return;
             }
             if (e.key === 'Delete') this.app.editor.deleteSelected();
         });
@@ -237,7 +237,7 @@ export class UIManager {
                 btnPlay.classList.add('play-active');
             }
         };
-        
+
         document.getElementById('project-load-input').onchange = (e) => {
             const file = e.target.files[0];
             if (file) { this.app.editor.loadProject(file); e.target.value = ''; }
@@ -246,7 +246,7 @@ export class UIManager {
 
     setActiveTool(id) {
         document.querySelectorAll('.tool-btn').forEach(b => b.classList.remove('active'));
-        const el = document.getElementById(id); if(el) el.classList.add('active');
+        const el = document.getElementById(id); if (el) el.classList.add('active');
     }
 
     setupPanels() {
@@ -275,13 +275,13 @@ export class UIManager {
                     const editorCam = this.app.sceneManager.camera;
                     selected.position.copy(editorCam.position);
                     selected.quaternion.copy(editorCam.quaternion);
-                    
+
                     // Also align internal camera object
                     const internalCam = selected.children.find(c => c.isCamera);
                     if (internalCam) {
                         internalCam.rotation.set(0, 0, 0); // Reset internal to match parent wrapper
                     }
-                    
+
                     this.updateProperties(); // Refresh UI
                 }
             };
@@ -291,23 +291,23 @@ export class UIManager {
     }
 
     setupInputs() {
-        document.getElementById('obj-name-input').onchange = (e) => { 
-            if (this.app.editor.selected) { 
-                this.app.editor.selected.name = e.target.value; 
-                this.updateOutliner(); 
+        document.getElementById('obj-name-input').onchange = (e) => {
+            if (this.app.editor.selected) {
+                this.app.editor.selected.name = e.target.value;
+                this.updateOutliner();
                 this.rebuildLibrary();
-            } 
+            }
         };
-        
+
         const axes = ['x', 'y', 'z'];
         axes.forEach(axis => {
-            const p = document.getElementById(`t-p${axis}`); if(p) p.onchange = (e) => { if (this.app.editor.selected) this.app.editor.selected.position[axis] = parseFloat(e.target.value); };
-            const r = document.getElementById(`t-r${axis}`); if(r) r.onchange = (e) => { if (this.app.editor.selected) this.app.editor.selected.rotation[axis] = THREE.MathUtils.degToRad(parseFloat(e.target.value)); };
-            const s = document.getElementById(`t-s${axis}`); if(s) s.onchange = (e) => { if (this.app.editor.selected) this.app.editor.selected.scale[axis] = parseFloat(e.target.value); };
+            const p = document.getElementById(`t-p${axis}`); if (p) p.onchange = (e) => { if (this.app.editor.selected) this.app.editor.selected.position[axis] = parseFloat(e.target.value); };
+            const r = document.getElementById(`t-r${axis}`); if (r) r.onchange = (e) => { if (this.app.editor.selected) this.app.editor.selected.rotation[axis] = THREE.MathUtils.degToRad(parseFloat(e.target.value)); };
+            const s = document.getElementById(`t-s${axis}`); if (s) s.onchange = (e) => { if (this.app.editor.selected) this.app.editor.selected.scale[axis] = parseFloat(e.target.value); };
         });
 
-        document.getElementById('p-typology').onchange = (e) => { 
-            if (this.app.editor.selected?.userData.isPlayer) { 
+        document.getElementById('p-typology').onchange = (e) => {
+            if (this.app.editor.selected?.userData.isPlayer) {
                 const player = this.app.editor.selected;
                 const oldType = player.userData.typology || 'platform';
                 const newType = e.target.value;
@@ -351,10 +351,10 @@ export class UIManager {
                 }
 
                 this.app.editor.autoMapPlayerAnimations(player);
-                this.updateProperties(); 
-            } 
+                this.updateProperties();
+            }
         };
-        
+
         // Define ALL variables first
         const pRadius = document.getElementById('p-radius');
         const pHeight = document.getElementById('p-height');
@@ -403,7 +403,7 @@ export class UIManager {
                 }
             });
         }
-        
+
         if (pRadius && pHeight) {
             const updateCapsule = () => {
                 if (this.app.editor.selected?.userData.isPlayer) {
@@ -411,13 +411,13 @@ export class UIManager {
                     const h = parseFloat(pHeight.value);
                     if (!isNaN(r) && !isNaN(h) && r > 0 && h > 0) {
                         const oldParams = this.app.editor.selected.geometry.parameters;
-                        const oldBottom = -((oldParams.length || oldParams.height)/2 + oldParams.radius);
-                        const newBottom = -(h/2 + r);
+                        const oldBottom = -((oldParams.length || oldParams.height) / 2 + oldParams.radius);
+                        const newBottom = -(h / 2 + r);
                         const delta = newBottom - oldBottom;
 
                         this.app.editor.selected.geometry.dispose();
                         this.app.editor.selected.geometry = new THREE.CapsuleGeometry(r, h, 4, 8);
-                        
+
                         const model = this.app.editor.selected.getObjectByName('model');
                         if (model) {
                             model.position.y += delta;
@@ -495,8 +495,8 @@ export class UIManager {
         bindProp('e-movestyle', 'moveStyle', 'Enemy');
         const eMoveStyle = document.getElementById('e-movestyle');
         if (eMoveStyle) eMoveStyle.addEventListener('change', (e) => {
-             const panel = document.getElementById('panel-enemy-follower');
-             if (panel) panel.classList.toggle('hidden', e.target.value !== 'follower');
+            const panel = document.getElementById('panel-enemy-follower');
+            if (panel) panel.classList.toggle('hidden', e.target.value !== 'follower');
         });
 
         bindProp('e-speed', 'speed', 'Enemy', parseFloat);
@@ -504,13 +504,13 @@ export class UIManager {
         bindProp('e-physics', 'hasPhysics', 'Enemy');
         bindProp('e-freeze', 'isFrozen', 'Enemy');
         bindProp('e-can-stomp', 'canStomp', 'Enemy');
-                bindProp('e-anim-idle', 'animIdle', 'Enemy');
-                bindProp('e-anim-move', 'animMove', 'Enemy');
-                bindProp('e-anim-hit', 'animHit', 'Enemy');
-                bindProp('e-anim-death', 'animDeath', 'Enemy');
-                bindProp('e-no-col', 'noCollision', 'Enemy');
-        
-                // Follower Properties        bindProp('e-f-target', 'followerTarget', 'Enemy');
+        bindProp('e-anim-idle', 'animIdle', 'Enemy');
+        bindProp('e-anim-move', 'animMove', 'Enemy');
+        bindProp('e-anim-hit', 'animHit', 'Enemy');
+        bindProp('e-anim-death', 'animDeath', 'Enemy');
+        bindProp('e-no-col', 'noCollision', 'Enemy');
+
+        // Follower Properties        bindProp('e-f-target', 'followerTarget', 'Enemy');
         bindProp('e-f-proximity', 'followerProximity', 'Enemy', parseFloat);
         bindProp('e-f-stop-dist', 'followerStopDist', 'Enemy', parseFloat);
         bindProp('e-f-stop-col', 'followerStopCol', 'Enemy');
@@ -565,6 +565,8 @@ export class UIManager {
                 const panelLantern = document.getElementById('panel-pu-lantern');
                 if (panelGun) panelGun.classList.toggle('hidden', e.target.value !== 'gun');
                 if (panelLantern) panelLantern.classList.toggle('hidden', e.target.value !== 'lantern');
+                const panelFly = document.getElementById('panel-pu-fly');
+                if (panelFly) panelFly.classList.toggle('hidden', e.target.value !== 'fly');
             });
         }
         bindProp('pu-bullet-power', 'bulletPower', 'PowerUp', parseInt);
@@ -589,10 +591,14 @@ export class UIManager {
                 input.click();
             };
         }
-        
+
         bindProp('pu-dur', 'duration', 'PowerUp', parseFloat);
         bindProp('pu-anim', 'defaultAnim', 'PowerUp');
+
         bindProp('pu-anim-equip', 'equipAnim', 'PowerUp');
+        bindProp('pu-fly-anim', 'flyAnim', 'PowerUp');
+        bindProp('pu-fly-boost', 'flyBoost', 'PowerUp', parseFloat);
+        bindProp('pu-fly-height', 'flyHeight', 'PowerUp', parseFloat);
         bindProp('pu-no-col', 'noCollision', 'PowerUp');
         bindProp('pu-offx', 'equipOffsetX', 'PowerUp', parseFloat);
         bindProp('pu-offy', 'equipOffsetY', 'PowerUp', parseFloat);
@@ -625,7 +631,7 @@ export class UIManager {
 
                         sel.geometry.dispose();
                         sel.geometry = new THREE.BoxGeometry(oldParams.width || 0.5, newH, oldParams.depth || 0.5);
-                        
+
                         sel.position.y += delta;
                         const model = sel.getObjectByName('model');
                         if (model) {
@@ -648,7 +654,7 @@ export class UIManager {
         // Collision
         bindProp('col-action', 'actionType', 'Collision');
         bindProp('col-value', 'actionValue', 'Collision');
-        
+
         const btnAddColTarget = document.getElementById('btn-col-add-target');
         if (btnAddColTarget) {
             btnAddColTarget.onclick = () => {
@@ -694,11 +700,26 @@ export class UIManager {
         setupLoader('btn-model-import', 'Model', 'm');
         setupModelEdit('btn-edit-m-modely', 'm-modely');
 
+        // Model Transparency
+        const bindMaterialOpt = (id, key, parser = v => v) => {
+            const el = document.getElementById(id);
+            if (el) el.onchange = (e) => {
+                if (this.app.editor.selected?.userData.type === 'Model') {
+                    this.app.editor.selected.userData[key] = parser(e.target.type === 'checkbox' ? e.target.checked : e.target.value);
+                    const m = this.app.editor.selected.getObjectByName('model');
+                    if (m) this.app.editor.updateMaterialSettings(m);
+                }
+            };
+        };
+        bindMaterialOpt('m-alpha-mode', 'alphaMode');
+        bindMaterialOpt('m-alpha-test', 'alphaTest', parseFloat);
+        bindMaterialOpt('m-double-side', 'doubleSide');
+
         // Camera Bindings
         const cType = document.getElementById('c-type');
         if (cType) cType.onchange = (e) => { if (this.app.editor.selected?.userData.isCamera) this.app.editor.selected.userData.type = e.target.value; };
         const cFov = document.getElementById('c-fov');
-        if (cFov) cFov.onchange = (e) => { 
+        if (cFov) cFov.onchange = (e) => {
             if (this.app.editor.selected?.userData.isCamera) {
                 this.app.editor.selected.userData.fov = parseFloat(e.target.value);
                 const cam = this.app.editor.selected.children.find(c => c.isCamera);
@@ -720,7 +741,7 @@ export class UIManager {
 
                         sel.geometry.dispose();
                         sel.geometry = new THREE.BoxGeometry(oldParams.width || 0.8, newH, oldParams.depth || 0.8);
-                        
+
                         sel.position.y += delta;
                         const model = sel.getObjectByName('model');
                         if (model) {
@@ -735,13 +756,13 @@ export class UIManager {
 
         const eModelRot = document.getElementById('e-model-roty');
         if (eModelRot) eModelRot.oninput = (e) => {
-             const m = this.app.editor.selected?.getObjectByName('model');
-             if (m) m.rotation.y = THREE.MathUtils.degToRad(parseFloat(e.target.value));
+            const m = this.app.editor.selected?.getObjectByName('model');
+            if (m) m.rotation.y = THREE.MathUtils.degToRad(parseFloat(e.target.value));
         };
         const eModelScale = document.getElementById('e-model-scale');
         if (eModelScale) eModelScale.oninput = (e) => {
-             const m = this.app.editor.selected?.getObjectByName('model');
-             if (m) m.scale.setScalar(parseFloat(e.target.value));
+            const m = this.app.editor.selected?.getObjectByName('model');
+            if (m) m.scale.setScalar(parseFloat(e.target.value));
         };
     }
 
@@ -760,7 +781,7 @@ export class UIManager {
             else if (o.userData.type === 'PowerUp') icon = '⚡';
             else if (o.userData.type === 'Goal') icon = '🏆';
             else if (o.userData.type === 'Spawn') icon = '🏁';
-            
+
             li.innerText = `${icon} ${o.name}`;
             li.onclick = () => this.app.editor.select(o); list.appendChild(li);
         });
@@ -770,7 +791,7 @@ export class UIManager {
         const selected = this.app.editor.selected;
         // Hide all first
         ['section-transform', 'section-player', 'section-camera', 'section-enemy', 'section-bonus', 'section-boss', 'section-powerup', 'section-spawn', 'section-goal', 'section-catcher', 'section-collision', 'section-model'].forEach(id => {
-            const el = document.getElementById(id); if(el) el.classList.add('hidden');
+            const el = document.getElementById(id); if (el) el.classList.add('hidden');
         });
         document.getElementById('section-game').classList.add('hidden');
 
@@ -779,9 +800,9 @@ export class UIManager {
         document.getElementById('section-transform').classList.remove('hidden');
         document.getElementById('obj-name-input').value = selected.name;
         ['x', 'y', 'z'].forEach(axis => {
-            const p = document.getElementById(`t-p${axis}`); if(p) p.value = selected.position[axis].toFixed(2);
-            const r = document.getElementById(`t-r${axis}`); if(r) r.value = THREE.MathUtils.radToDeg(selected.rotation[axis]).toFixed(0);
-            const s = document.getElementById(`t-s${axis}`); if(s) s.value = selected.scale[axis].toFixed(2);
+            const p = document.getElementById(`t-p${axis}`); if (p) p.value = selected.position[axis].toFixed(2);
+            const r = document.getElementById(`t-r${axis}`); if (r) r.value = THREE.MathUtils.radToDeg(selected.rotation[axis]).toFixed(0);
+            const s = document.getElementById(`t-s${axis}`); if (s) s.value = selected.scale[axis].toFixed(2);
         });
 
         if (selected.userData.isPlayer) {
@@ -797,7 +818,7 @@ export class UIManager {
             document.getElementById('p-jump').value = (selected.userData.jumpForce || 12.0).toFixed(1);
             const dj = document.getElementById('p-doublejump');
             if (dj) dj.checked = !!selected.userData.doubleJump;
-            
+
             const params = selected.geometry?.parameters || {};
             document.getElementById('p-radius').value = params.radius || 0.5;
             document.getElementById('p-height').value = params.length || params.height || 0.5;
@@ -821,27 +842,27 @@ export class UIManager {
             const type = selected.userData.type;
             let sectionId = `section-${type.toLowerCase()}`;
             if (type === 'catcher_base') sectionId = 'section-catcher';
-            
+
             const el = document.getElementById(sectionId);
             if (el) el.classList.remove('hidden');
 
             const prefix = type === 'Enemy' ? 'e' : type === 'Bonus' ? 'b' : type === 'Boss' ? 'bs' : type === 'PowerUp' ? 'pu' : type === 'Spawn' ? 'sp' : type === 'Goal' ? 'g' : type === 'Collision' ? 'col' : (type === 'catcher_base' || type === 'Catcher') ? 'c' : type === 'Model' ? 'm' : '';
-            
+
             // Common GLB & Model Y Logic
             if (prefix) {
                 const model = selected.getObjectByName('model');
                 const container = document.getElementById(`${prefix}-glb-preview-container`);
                 const filename = document.getElementById(`${prefix}-filename`);
                 const modely = document.getElementById(`${prefix}-modely`);
-                
+
                 if (filename) filename.innerText = selected.userData.glbFilename || "(Default)";
                 if (modely && model) modely.value = model.position.y.toFixed(2);
 
                 if (model && selected.userData.glbSource) {
-                    if(container) container.style.display = 'flex';
+                    if (container) container.style.display = 'flex';
                     const img = document.getElementById(`${prefix}-glb-preview-img`);
                     if (img && (!img.src || img.style.display === 'none')) this.generateThumbnail(model, `${prefix}-glb-preview-img`);
-                    
+
                     if (type === 'Enemy') {
                         const rotY = document.getElementById('e-model-roty');
                         const scale = document.getElementById('e-model-scale');
@@ -863,27 +884,35 @@ export class UIManager {
                 const anims = selected.userData.anims || [];
                 const animSelect = document.getElementById('m-anim-default');
                 if (animSelect) {
-                    animSelect.innerHTML = '<option value="">-- None --</option>' + 
+                    animSelect.innerHTML = '<option value="">-- None --</option>' +
                         anims.map(a => `<option value="${a}" ${a === selected.userData.defaultAnim ? 'selected' : ''}>${a}</option>`).join('');
                 }
+
+                // Transparency
+                const am = document.getElementById('m-alpha-mode');
+                if (am) am.value = selected.userData.alphaMode || 'mask';
+                const at = document.getElementById('m-alpha-test');
+                if (at) at.value = selected.userData.alphaTest !== undefined ? selected.userData.alphaTest : 0.5;
+                const ds = document.getElementById('m-double-side');
+                if (ds) ds.checked = selected.userData.doubleSide !== undefined ? !!selected.userData.doubleSide : true;
             }
 
             else if (type === 'Enemy') {
                 document.getElementById('e-hp').value = selected.userData.hp || 3;
                 document.getElementById('e-movestyle').value = selected.userData.moveStyle || 'none';
-                
+
                 const moveStyle = selected.userData.moveStyle || 'none';
                 const followerPanel = document.getElementById('panel-enemy-follower');
                 if (followerPanel) {
                     followerPanel.classList.toggle('hidden', moveStyle !== 'follower');
                     if (moveStyle === 'follower') {
                         document.getElementById('e-f-target').value = selected.userData.followerTarget || '';
-                        
+
                         // Populate Datalist
                         const dataList = document.getElementById('e-f-target-list');
                         if (dataList) {
                             dataList.innerHTML = '';
-                            const targets = ['Player']; 
+                            const targets = ['Player'];
                             this.app.editor.objects.forEach(o => {
                                 if (o !== selected && o.name) targets.push(o.name);
                             });
@@ -925,7 +954,7 @@ export class UIManager {
                 const anims = selected.userData.anims || [];
                 const populateAnim = (id, val) => {
                     const el = document.getElementById(id);
-                    if (el) el.innerHTML = '<option value="">-- None --</option>' + 
+                    if (el) el.innerHTML = '<option value="">-- None --</option>' +
                         anims.map(a => `<option value="${a}" ${a === val ? 'selected' : ''}>${a}</option>`).join('');
                 };
 
@@ -947,7 +976,7 @@ export class UIManager {
                 const anims = selected.userData.anims || [];
                 const populateBonusAnim = (id, val) => {
                     const el = document.getElementById(id);
-                    if (el) el.innerHTML = '<option value="">-- None --</option>' + 
+                    if (el) el.innerHTML = '<option value="">-- None --</option>' +
                         anims.map(a => `<option value="${a}" ${a === val ? 'selected' : ''}>${a}</option>`).join('');
                 };
 
@@ -961,16 +990,19 @@ export class UIManager {
             else if (type === 'PowerUp') {
                 const pType = selected.userData.powerType || 'hammer';
                 document.getElementById('pu-type').value = pType;
-                
+
                 const gunPanel = document.getElementById('panel-pu-gun');
                 if (gunPanel) gunPanel.classList.toggle('hidden', pType !== 'gun');
-                
+
                 const lanternPanel = document.getElementById('panel-pu-lantern');
                 if (lanternPanel) lanternPanel.classList.toggle('hidden', pType !== 'lantern');
-                
+
+                const flyPanel = document.getElementById('panel-pu-fly');
+                if (flyPanel) flyPanel.classList.toggle('hidden', pType !== 'fly');
+
                 document.getElementById('pu-bullet-power').value = selected.userData.bulletPower || 1;
                 document.getElementById('pu-bullet-filename').innerText = selected.userData.bulletFilename || 'None';
-                
+
                 document.getElementById('pu-lantern-freeze').value = selected.userData.lanternFreezeDuration || 5.0;
 
                 document.getElementById('pu-dur').value = selected.userData.duration || 10;
@@ -979,45 +1011,64 @@ export class UIManager {
                 document.getElementById('pu-offy').value = (selected.userData.equipOffsetY || 1.0).toFixed(2);
                 document.getElementById('pu-offz').value = (selected.userData.equipOffsetZ || 0.5).toFixed(2);
                 document.getElementById('pu-height').value = (selected.geometry?.parameters?.height || 0.5).toFixed(1);
-                
+
                 const model = selected.getObjectByName('model');
                 if (model) {
                     document.getElementById('pu-model-scale').value = model.scale.x.toFixed(2);
                 }
-                
+
                 const er = selected.userData.equipRotation || [0, 0, 0];
                 document.getElementById('pu-rotx').value = THREE.MathUtils.radToDeg(er[0]).toFixed(0);
                 document.getElementById('pu-roty').value = THREE.MathUtils.radToDeg(er[1]).toFixed(0);
                 document.getElementById('pu-rotz').value = THREE.MathUtils.radToDeg(er[2]).toFixed(0);
-                
+
                 const anims = selected.userData.anims || [];
                 const animSelect = document.getElementById('pu-anim');
                 if (animSelect) {
-                    animSelect.innerHTML = '<option value="">-- None --</option>' + 
+                    animSelect.innerHTML = '<option value="">-- None --</option>' +
                         anims.map(a => `<option value="${a}" ${a === selected.userData.defaultAnim ? 'selected' : ''}>${a}</option>`).join('');
                 }
-                const equipSelect = document.getElementById('pu-anim-equip');
+                const equipSelect = document.getElementById('pu-equip-anim'); // Assuming equipSelect was defined elsewhere or is a typo for pu-equip-anim
                 if (equipSelect) {
-                    equipSelect.innerHTML = '<option value="">-- None --</option>' + 
+                    equipSelect.innerHTML = '<option value="">-- None --</option>' +
                         anims.map(a => `<option value="${a}" ${a === selected.userData.equipAnim ? 'selected' : ''}>${a}</option>`).join('');
                 }
+
+                // Get PLAYER animations for Fly Anim (since it plays on Player)
+                const player = this.app.editor.objects.find(o => o.userData.isPlayer);
+                let playerAnims = [];
+                if (player) {
+                    playerAnims = player.userData.anims || [];
+                    if (playerAnims.length === 0) {
+                        const m = player.getObjectByName('model');
+                        if (m && m.animations) playerAnims = m.animations.map(c => c.name);
+                    }
+                }
+
+                const flyAnimSelect = document.getElementById('pu-fly-anim');
+                if (flyAnimSelect) {
+                    flyAnimSelect.innerHTML = '<option value="">-- None --</option>' +
+                        playerAnims.map(a => `<option value="${a}" ${a === selected.userData.flyAnim ? 'selected' : ''}>${a}</option>`).join('');
+                }
+                const flyBoostInput = document.getElementById('pu-fly-boost');
+                if (flyBoostInput) flyBoostInput.value = selected.userData.flyBoost || 10.0;
             }
             else if (type === 'Collision') {
                 document.getElementById('col-action').value = selected.userData.actionType || 'restart';
                 document.getElementById('col-value').value = selected.userData.actionValue || '';
-                
+
                 this.renderCollisionTargets(selected);
                 if (selected.userData.actionTargets?.length > 0) {
                     this.updateCollisionAnimList(selected.userData.actionTargets[0]);
                 } else if (selected.userData.actionTarget) {
                     this.updateCollisionAnimList(selected.userData.actionTarget);
                 }
-                
+
                 // Populate Datalist
                 const dataList = document.getElementById('col-target-list');
                 if (dataList) {
                     dataList.innerHTML = '';
-                    const targets = ['Player']; 
+                    const targets = ['Player'];
                     this.app.editor.objects.forEach(o => {
                         if (o !== selected && o.name) targets.push(o.name);
                     });
@@ -1120,12 +1171,12 @@ export class UIManager {
         if (anims.length === 0) {
             const model = target.getObjectByName('model');
             if (model && model.animations) {
-                 anims = model.animations.map(c => c.name);
+                anims = model.animations.map(c => c.name);
             }
         }
         if (target.userData.isPlayer && target.userData.actions) {
-             const actionAnims = target.userData.actions.map(a => a.anim).filter(a => a);
-             anims = [...new Set([...anims, ...actionAnims])];
+            const actionAnims = target.userData.actions.map(a => a.anim).filter(a => a);
+            anims = [...new Set([...anims, ...actionAnims])];
         }
 
         anims.forEach(anim => {
@@ -1137,18 +1188,18 @@ export class UIManager {
 
     generateThumbnail(model, targetImgId = 'glb-preview-img') {
         if (!model) return;
-        
+
         if (!this.thumbRenderer) {
             this.thumbRenderer = new THREE.WebGLRenderer({ alpha: true, preserveDrawingBuffer: true, antialias: true });
             this.thumbRenderer.setPixelRatio(window.devicePixelRatio);
         }
-        
+
         const renderer = this.thumbRenderer;
         renderer.setSize(128, 128);
-        
+
         const scene = new THREE.Scene(), camera = new THREE.PerspectiveCamera(45, 1, 0.01, 1000);
         scene.add(new THREE.AmbientLight(0xffffff, 1.2)); const dirLight = new THREE.DirectionalLight(0xffffff, 1.5); dirLight.position.set(2, 2, 5); scene.add(dirLight);
-        let clone; try { clone = SkeletonUtils.clone(model); } catch(e) { clone = model.clone(); }
+        let clone; try { clone = SkeletonUtils.clone(model); } catch (e) { clone = model.clone(); }
         clone.visible = true; clone.position.set(0, 0, 0); scene.add(clone);
         const box = new THREE.Box3().setFromObject(clone), center = box.getCenter(new THREE.Vector3()), size = box.getSize(new THREE.Vector3());
         clone.position.sub(center); const maxDim = Math.max(size.x, size.y, size.z);
@@ -1227,12 +1278,12 @@ export class UIManager {
                 currentPU.userData.equipOffsetY = currentPU.position.y;
                 currentPU.userData.equipOffsetZ = currentPU.position.z;
                 currentPU.userData.equipRotation = currentPU.rotation.toArray().slice(0, 3);
-                
+
                 // Sync UI
                 document.getElementById('pu-offx').value = currentPU.position.x.toFixed(2);
                 document.getElementById('pu-offy').value = currentPU.position.y.toFixed(2);
                 document.getElementById('pu-offz').value = currentPU.position.z.toFixed(2);
-                
+
                 document.getElementById('pu-rotx').value = THREE.MathUtils.radToDeg(currentPU.rotation.x).toFixed(0);
                 document.getElementById('pu-roty').value = THREE.MathUtils.radToDeg(currentPU.rotation.y).toFixed(0);
                 document.getElementById('pu-rotz').value = THREE.MathUtils.radToDeg(currentPU.rotation.z).toFixed(0);

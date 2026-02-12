@@ -1,5 +1,6 @@
 <!DOCTYPE html>
 <html lang="it">
+
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
@@ -15,6 +16,7 @@
         }
     </script>
 </head>
+
 <body>
 
     <input type="file" id="glb-input" accept=".glb,.gltf" style="display: none;">
@@ -26,14 +28,21 @@
                 <div class="panel-header">Toolbox</div>
                 <div class="panel-content">
                     <div class="action-row">
-                        <button class="action-btn" onclick="document.getElementById('project-load-input').click()"><svg viewBox="0 0 24 24"><path d="M10 4H4c-1.1 0-1.99.9-1.99 2L2 18c0 1.1.9 2 2 2h16c1.1 0 2-.9 2-2V8c0-1.1-.9-2-2-2h-8l-2-2z"/></svg></button>
-                        <button class="action-btn" id="btn-save"><svg viewBox="0 0 24 24"><path d="M17 3H5c-1.11 0-2 .9-2 2v14c0 1.1.89 2 2 2h14c1.1 0 2-.9 2-2V7l-4-4zm-5 16c-1.66 0-3-1.34-3-3s1.34-3 3-3 3 1.34 3 3-1.34 3-3 3zm3-10H5V5h10v4z"/></svg></button>
+                        <button class="action-btn" onclick="document.getElementById('project-load-input').click()"><svg
+                                viewBox="0 0 24 24">
+                                <path
+                                    d="M10 4H4c-1.1 0-1.99.9-1.99 2L2 18c0 1.1.9 2 2 2h16c1.1 0 2-.9 2-2V8c0-1.1-.9-2-2-2h-8l-2-2z" />
+                            </svg></button>
+                        <button class="action-btn" id="btn-save"><svg viewBox="0 0 24 24">
+                                <path
+                                    d="M17 3H5c-1.11 0-2 .9-2 2v14c0 1.1.89 2 2 2h14c1.1 0 2-.9 2-2V7l-4-4zm-5 16c-1.66 0-3-1.34-3-3s1.34-3 3-3 3 1.34 3 3-1.34 3-3 3zm3-10H5V5h10v4z" />
+                            </svg></button>
                     </div>
                     <button class="btn-full" id="btn-game-props">⚙️ Game Properties</button>
                 </div>
             </aside>
             <div class="resizer resizer-v" id="resizer-left"></div>
-            
+
             <main id="viewport">
                 <div id="game-hud" class="hidden">
                     <div class="hud-item" id="hud-score">Score: 0</div>
@@ -44,40 +53,64 @@
                     </div>
                 </div>
                 <div id="toolbar-floating">
-                    <button class="tool-btn" id="btn-undo"><svg viewBox="0 0 24 24"><path d="M12.5 8c-2.65 0-5.05.99-6.9 2.6L2 7v9h9l-3.62-3.62c1.39-1.16 3.16-1.88 5.12-1.88 3.54 0 6.55 2.31 7.6 5.5l2.37-.78C21.08 11.03 17.15 8 12.5 8z"/></svg></button>
-                    <button class="tool-btn" id="btn-redo"><svg viewBox="0 0 24 24"><path d="M18.4 10.6C16.55 9 14.15 8 11.5 8c-4.65 0-8.58 3.03-9.96 7.22L3.9 16c1.05-3.19 4.05-5.5 7.6-5.5 1.95 0 3.73.72 5.12 1.88L13 16h9V7l-3.6 3.6z"/></svg></button>
-                    <button class="tool-btn" id="btn-play"><svg viewBox="0 0 24 24"><path d="M8 5v14l11-7z"/></svg></button>
+                    <button class="tool-btn" id="btn-undo"><svg viewBox="0 0 24 24">
+                            <path
+                                d="M12.5 8c-2.65 0-5.05.99-6.9 2.6L2 7v9h9l-3.62-3.62c1.39-1.16 3.16-1.88 5.12-1.88 3.54 0 6.55 2.31 7.6 5.5l2.37-.78C21.08 11.03 17.15 8 12.5 8z" />
+                        </svg></button>
+                    <button class="tool-btn" id="btn-redo"><svg viewBox="0 0 24 24">
+                            <path
+                                d="M18.4 10.6C16.55 9 14.15 8 11.5 8c-4.65 0-8.58 3.03-9.96 7.22L3.9 16c1.05-3.19 4.05-5.5 7.6-5.5 1.95 0 3.73.72 5.12 1.88L13 16h9V7l-3.6 3.6z" />
+                        </svg></button>
+                    <button class="tool-btn" id="btn-play"><svg viewBox="0 0 24 24">
+                            <path d="M8 5v14l11-7z" />
+                        </svg></button>
                     <div class="tool-divider"></div>
-                    <button class="tool-btn active" id="btn-trans"><svg viewBox="0 0 24 24"><path d="M12 2L8 6h3v5H6V8L2 12l4 4v-3h5v5H8l4 4 4-4h-3v-5h5v3l4-4-4-4v3h-5V6h3L12 2z"/></svg></button>
-                    <button class="tool-btn" id="btn-rot"><svg viewBox="0 0 24 24"><path d="M12 2C6.48 2 2 6.48 2 12c0 3.31 1.61 6.24 4.09 8.17l1.42-1.42C5.9 17.29 4.95 15.22 4.95 12c0-3.87 3.13-7 7-7 1.93 0 3.68.79 4.94 2.06l-3.94 3.94h9V2l-3.32 3.32C16.92 3.29 14.58 2 12 2z"/></svg></button>
-                    <button class="tool-btn" id="btn-scale"><svg viewBox="0 0 24 24"><path d="M19 12h-2v3h-3v2h5v-5zM7 9h3V7H5v5h2V9zm14-6H3c-1.1 0-2 .9-2 2v14c0 1.1.9 2 2 2h18c1.1 0 2-.9 2-2V5c0-1.1-.9-2-2-2zm0 16H3V5h18v14z"/></svg></button>
-                <div class="tool-divider"></div>
-                <div style="display:flex; align-items:center; gap:5px; margin-left:5px;">
-                    <input type="checkbox" id="snap-trans" checked title="Snap Translation (0.5)">
-                    <span style="font-size:10px; color:#aaa;">T</span>
-                    <input type="checkbox" id="snap-rot" checked title="Snap Rotation (5°)">
-                    <span style="font-size:10px; color:#aaa;">R</span>
-                    <input type="checkbox" id="snap-scale" checked title="Snap Scale (0.1)">
-                    <span style="font-size:10px; color:#aaa;">S</span>
-                </div>
+                    <button class="tool-btn active" id="btn-trans"><svg viewBox="0 0 24 24">
+                            <path d="M12 2L8 6h3v5H6V8L2 12l4 4v-3h5v5H8l4 4 4-4h-3v-5h5v3l4-4-4-4v3h-5V6h3L12 2z" />
+                        </svg></button>
+                    <button class="tool-btn" id="btn-rot"><svg viewBox="0 0 24 24">
+                            <path
+                                d="M12 2C6.48 2 2 6.48 2 12c0 3.31 1.61 6.24 4.09 8.17l1.42-1.42C5.9 17.29 4.95 15.22 4.95 12c0-3.87 3.13-7 7-7 1.93 0 3.68.79 4.94 2.06l-3.94 3.94h9V2l-3.32 3.32C16.92 3.29 14.58 2 12 2z" />
+                        </svg></button>
+                    <button class="tool-btn" id="btn-scale"><svg viewBox="0 0 24 24">
+                            <path
+                                d="M19 12h-2v3h-3v2h5v-5zM7 9h3V7H5v5h2V9zm14-6H3c-1.1 0-2 .9-2 2v14c0 1.1.9 2 2 2h18c1.1 0 2-.9 2-2V5c0-1.1-.9-2-2-2zm0 16H3V5h18v14z" />
+                        </svg></button>
                     <div class="tool-divider"></div>
-                    <button class="tool-btn" id="btn-delete" style="color:#ff4444;"><svg viewBox="0 0 24 24"><path d="M6 19c0 1.1.9 2 2 2h8c1.1 0 2-.9 2-2V7H6v12zM19 4h-3.5l-1-1h-5l-1 1H5v2h14V4z"/></svg></button>
+                    <div style="display:flex; align-items:center; gap:5px; margin-left:5px;">
+                        <input type="checkbox" id="snap-trans" checked title="Snap Translation (0.5)">
+                        <span style="font-size:10px; color:#aaa;">T</span>
+                        <input type="checkbox" id="snap-rot" checked title="Snap Rotation (5°)">
+                        <span style="font-size:10px; color:#aaa;">R</span>
+                        <input type="checkbox" id="snap-scale" checked title="Snap Scale (0.1)">
+                        <span style="font-size:10px; color:#aaa;">S</span>
+                    </div>
+                    <div class="tool-divider"></div>
+                    <button class="tool-btn" id="btn-delete" style="color:#ff4444;"><svg viewBox="0 0 24 24">
+                            <path d="M6 19c0 1.1.9 2 2 2h8c1.1 0 2-.9 2-2V7H6v12zM19 4h-3.5l-1-1h-5l-1 1H5v2h14V4z" />
+                        </svg></button>
                 </div>
             </main>
-            
+
             <div class="resizer resizer-v" id="resizer-right"></div>
-            
+
             <aside id="right-panel">
-                <div id="outliner-panel"><div class="panel-header">Outliner</div><div class="panel-content" style="padding:0;"><ul id="outliner-list" class="outliner-list"></ul></div></div>
+                <div id="outliner-panel">
+                    <div class="panel-header">Outliner</div>
+                    <div class="panel-content" style="padding:0;">
+                        <ul id="outliner-list" class="outliner-list"></ul>
+                    </div>
+                </div>
                 <div class="resizer resizer-h" id="resizer-split"></div>
                 <div id="properties-panel">
                     <div class="panel-header">Properties</div>
                     <div class="panel-content">
                         <div id="section-transform" class="hidden">
                             <div style="margin-bottom:10px; padding-bottom:5px; border-bottom:1px solid #333;">
-                                <input id="obj-name-input" type="text" class="transform-input" style="font-weight:bold; color:var(--accent); width:100%;">
+                                <input id="obj-name-input" type="text" class="transform-input"
+                                    style="font-weight:bold; color:var(--accent); width:100%;">
                             </div>
-                            
+
                             <div class="transform-grid">
                                 <span class="transform-label">Position</span>
                                 <input id="t-px" type="number" step="0.1" class="transform-input" placeholder="X">
@@ -110,17 +143,23 @@
                             </div>
 
                             <!-- Common GLB Loading Section -->
-                            <div id="player-common-glb" style="margin-top:10px; border-top:1px solid #333; padding-top:10px;">
+                            <div id="player-common-glb"
+                                style="margin-top:10px; border-top:1px solid #333; padding-top:10px;">
                                 <div style="display:flex; gap:10px; align-items:flex-start; margin-bottom:10px;">
-                                    <div id="glb-preview-container" style="display:none; flex:0 0 64px; height:64px; background:#111; border:1px solid #333; border-radius:4px; overflow:hidden; position:relative;">
-                                        <img id="glb-preview-img" style="width:100%; height:100%; object-fit:contain; display:none;">
-                                        <span id="glb-preview-placeholder" style="position:absolute; top:50%; left:50%; transform:translate(-50%, -50%); color:#444; font-size:16px;">🧊</span>
+                                    <div id="glb-preview-container"
+                                        style="display:none; flex:0 0 64px; height:64px; background:#111; border:1px solid #333; border-radius:4px; overflow:hidden; position:relative;">
+                                        <img id="glb-preview-img"
+                                            style="width:100%; height:100%; object-fit:contain; display:none;">
+                                        <span id="glb-preview-placeholder"
+                                            style="position:absolute; top:50%; left:50%; transform:translate(-50%, -50%); color:#444; font-size:16px;">🧊</span>
                                     </div>
                                     <div style="flex:1;">
-                                        <button class="btn-full" id="btn-import" style="margin-bottom:5px;">📂 Import GLB</button>
+                                        <button class="btn-full" id="btn-import" style="margin-bottom:5px;">📂 Import
+                                            GLB</button>
                                         <div style="display:flex; align-items:center; gap:5px;">
                                             <span style="font-size:10px; color:#888;">File:</span>
-                                            <input type="text" id="glb-filename" readonly style="flex:1; background:transparent; border:none; color:#eb7b33; font-size:11px; text-overflow:ellipsis; overflow:hidden; white-space:nowrap;">
+                                            <input type="text" id="glb-filename" readonly
+                                                style="flex:1; background:transparent; border:none; color:#eb7b33; font-size:11px; text-overflow:ellipsis; overflow:hidden; white-space:nowrap;">
                                         </div>
                                     </div>
                                 </div>
@@ -128,25 +167,35 @@
 
                             <!-- Platform 2.5D / 8WAY Specific Panel -->
                             <div id="panel-platform" class="hidden">
-                                <div style="font-weight:bold; font-size:11px; color:var(--accent); margin:10px 0 5px;">Movement Settings</div>
-                                <div class="prop-row"><span class="prop-label">Speed</span><input id="p-speed" type="number" step="0.1" value="0.4" class="prop-input"></div>
-                                <div class="prop-row"><span class="prop-label">Jump</span><input id="p-jump" type="number" step="0.5" value="5.0" class="prop-input"></div>
-                                <div class="prop-row"><span class="prop-label">Double Jump</span><input id="p-doublejump" type="checkbox" style="margin:0;"></div>
-                                <div class="prop-row"><span class="prop-label">Radius</span><input id="p-radius" type="number" step="0.05" class="prop-input"></div>
-                                <div class="prop-row"><span class="prop-label">Height</span><input id="p-height" type="number" step="0.1" class="prop-input"></div>
+                                <div style="font-weight:bold; font-size:11px; color:var(--accent); margin:10px 0 5px;">
+                                    Movement Settings</div>
+                                <div class="prop-row"><span class="prop-label">Speed</span><input id="p-speed"
+                                        type="number" step="0.1" value="0.4" class="prop-input"></div>
+                                <div class="prop-row"><span class="prop-label">Jump</span><input id="p-jump"
+                                        type="number" step="0.5" value="5.0" class="prop-input"></div>
+                                <div class="prop-row"><span class="prop-label">Double Jump</span><input
+                                        id="p-doublejump" type="checkbox" style="margin:0;"></div>
+                                <div class="prop-row"><span class="prop-label">Radius</span><input id="p-radius"
+                                        type="number" step="0.05" class="prop-input"></div>
+                                <div class="prop-row"><span class="prop-label">Height</span><input id="p-height"
+                                        type="number" step="0.1" class="prop-input"></div>
                                 <div class="prop-row"><span class="prop-label">Model Y</span>
                                     <div style="display:flex; flex:1; gap:5px;">
                                         <input id="p-modely" type="number" step="0.1" class="prop-input">
-                                        <button id="btn-edit-model-y" class="action-btn" style="flex:0 0 24px; padding:0;" title="Edit Model Offset">✏️</button>
+                                        <button id="btn-edit-model-y" class="action-btn"
+                                            style="flex:0 0 24px; padding:0;" title="Edit Model Offset">✏️</button>
                                     </div>
                                 </div>
                             </div>
 
                             <div class="action-accordion">
-                                <div class="action-accordion-header" onclick="this.nextElementSibling.classList.toggle('open')">
+                                <div class="action-accordion-header"
+                                    onclick="this.nextElementSibling.classList.toggle('open')">
                                     <span>ACTIONS</span>
                                     <div style="display:flex; gap:5px; align-items:center;">
-                                        <button id="btn-add-action" class="btn-full" style="width:auto; padding:2px 8px; margin:0; font-size:10px; height:20px;">+ ADD</button>
+                                        <button id="btn-add-action" class="btn-full"
+                                            style="width:auto; padding:2px 8px; margin:0; font-size:10px; height:20px;">+
+                                            ADD</button>
                                         <span style="font-size:10px;">▼</span>
                                     </div>
                                 </div>
@@ -158,7 +207,8 @@
 
                         <div id="section-enemy" class="hidden">
                             <div style="font-weight:bold; margin-bottom:10px; color:#ff6600;">Enemy Settings</div>
-                            <div class="prop-row"><span class="prop-label">HP</span><input id="e-hp" type="number" step="1" class="prop-input"></div>
+                            <div class="prop-row"><span class="prop-label">HP</span><input id="e-hp" type="number"
+                                    step="1" class="prop-input"></div>
                             <div class="prop-row"><span class="prop-label">Move Style</span>
                                 <select id="e-movestyle" class="prop-input">
                                     <option value="none">None</option>
@@ -168,15 +218,22 @@
                                 </select>
                             </div>
 
-                            <div id="panel-enemy-follower" class="hidden" style="margin-top:5px; padding-left:10px; border-left:2px solid #ff6600;">
+                            <div id="panel-enemy-follower" class="hidden"
+                                style="margin-top:5px; padding-left:10px; border-left:2px solid #ff6600;">
                                 <div class="prop-row"><span class="prop-label">Target</span>
-                                    <input id="e-f-target" list="e-f-target-list" type="text" placeholder="Player" class="prop-input" title="Name or ID of object to follow. Default: Player">
+                                    <input id="e-f-target" list="e-f-target-list" type="text" placeholder="Player"
+                                        class="prop-input" title="Name or ID of object to follow. Default: Player">
                                     <datalist id="e-f-target-list"></datalist>
                                 </div>
-                                <div class="prop-row"><span class="prop-label">Detect Range</span><input id="e-f-proximity" type="number" step="0.5" value="5.0" class="prop-input"></div>
-                                <div class="prop-row"><span class="prop-label">Stop Dist</span><input id="e-f-stop-dist" type="number" step="0.1" value="0.5" class="prop-input"></div>
-                                <div class="prop-row"><span class="prop-label">Stop on Coll.</span><input id="e-f-stop-col" type="checkbox" style="margin:0;"></div>
-                                <div class="prop-row" style="margin-bottom:2px;"><span class="prop-label">Translate</span>
+                                <div class="prop-row"><span class="prop-label">Detect Range</span><input
+                                        id="e-f-proximity" type="number" step="0.5" value="5.0" class="prop-input">
+                                </div>
+                                <div class="prop-row"><span class="prop-label">Stop Dist</span><input id="e-f-stop-dist"
+                                        type="number" step="0.1" value="0.5" class="prop-input"></div>
+                                <div class="prop-row"><span class="prop-label">Stop on Coll.</span><input
+                                        id="e-f-stop-col" type="checkbox" style="margin:0;"></div>
+                                <div class="prop-row" style="margin-bottom:2px;"><span
+                                        class="prop-label">Translate</span>
                                     <div style="display:flex; gap:5px;">
                                         <label style="font-size:10px;">X<input id="e-f-tx" type="checkbox"></label>
                                         <label style="font-size:10px;">Y<input id="e-f-ty" type="checkbox"></label>
@@ -191,33 +248,50 @@
                                     </div>
                                 </div>
                             </div>
-                            <div class="prop-row"><span class="prop-label">Speed</span><input id="e-speed" type="number" step="0.1" class="prop-input"></div>
-                            <div class="prop-row"><span class="prop-label">Patrol Range</span><input id="e-patrol" type="number" step="0.5" class="prop-input"></div>
-                            <div class="prop-row"><span class="prop-label">Height</span><input id="e-height" type="number" step="0.1" class="prop-input"></div>
+                            <div class="prop-row"><span class="prop-label">Speed</span><input id="e-speed" type="number"
+                                    step="0.1" class="prop-input"></div>
+                            <div class="prop-row"><span class="prop-label">Patrol Range</span><input id="e-patrol"
+                                    type="number" step="0.5" class="prop-input"></div>
+                            <div class="prop-row"><span class="prop-label">Height</span><input id="e-height"
+                                    type="number" step="0.1" class="prop-input"></div>
                             <div class="prop-row"><span class="prop-label">Model Y</span>
                                 <div style="display:flex; flex:1; gap:5px;">
                                     <input id="e-modely" type="number" step="0.1" class="prop-input">
-                                    <button id="btn-edit-e-modely" class="action-btn" style="flex:0 0 24px; padding:0;" title="Edit Model Offset">✏️</button>
+                                    <button id="btn-edit-e-modely" class="action-btn" style="flex:0 0 24px; padding:0;"
+                                        title="Edit Model Offset">✏️</button>
                                 </div>
                             </div>
-                            <div class="prop-row"><span class="prop-label">Model Rot Y</span><input id="e-model-roty" type="number" step="5" class="prop-input"></div>
-                            <div class="prop-row"><span class="prop-label">Model Scale</span><input id="e-model-scale" type="number" step="0.1" class="prop-input"></div>
-                                                            <div class="prop-row"><span class="prop-label">Physics</span><input id="e-physics" type="checkbox" class="prop-checkbox"></div>
-                                                            <div class="prop-row"><span class="prop-label">Freeze</span><input id="e-freeze" type="checkbox" class="prop-checkbox"></div>
-                                                            <div class="prop-row"><span class="prop-label">Can Stomp</span><input id="e-can-stomp" type="checkbox" class="prop-checkbox"></div>                            <div class="prop-row"><span class="prop-label">No Collision</span><input id="e-no-col" type="checkbox" style="margin:0;"></div>
-                            
+                            <div class="prop-row"><span class="prop-label">Model Rot Y</span><input id="e-model-roty"
+                                    type="number" step="5" class="prop-input"></div>
+                            <div class="prop-row"><span class="prop-label">Model Scale</span><input id="e-model-scale"
+                                    type="number" step="0.1" class="prop-input"></div>
+                            <div class="prop-row"><span class="prop-label">Physics</span><input id="e-physics"
+                                    type="checkbox" class="prop-checkbox"></div>
+                            <div class="prop-row"><span class="prop-label">Freeze</span><input id="e-freeze"
+                                    type="checkbox" class="prop-checkbox"></div>
+                            <div class="prop-row"><span class="prop-label">Can Stomp</span><input id="e-can-stomp"
+                                    type="checkbox" class="prop-checkbox"></div>
+                            <div class="prop-row"><span class="prop-label">No Collision</span><input id="e-no-col"
+                                    type="checkbox" style="margin:0;"></div>
+
                             <!-- Enemy Model -->
                             <div style="margin-top:10px; border-top:1px solid #333; padding-top:10px;">
                                 <div style="display:flex; gap:10px; align-items:flex-start; margin-bottom:10px;">
-                                    <div id="e-glb-preview-container" style="display:none; flex:0 0 64px; height:64px; background:#111; border:1px solid #333; border-radius:4px; overflow:hidden; position:relative;">
-                                        <img id="e-glb-preview-img" style="width:100%; height:100%; object-fit:contain; display:none;">
-                                        <span id="e-glb-preview-placeholder" style="position:absolute; top:50%; left:50%; transform:translate(-50%, -50%); color:#444; font-size:16px;">👿</span>
+                                    <div id="e-glb-preview-container"
+                                        style="display:none; flex:0 0 64px; height:64px; background:#111; border:1px solid #333; border-radius:4px; overflow:hidden; position:relative;">
+                                        <img id="e-glb-preview-img"
+                                            style="width:100%; height:100%; object-fit:contain; display:none;">
+                                        <span id="e-glb-preview-placeholder"
+                                            style="position:absolute; top:50%; left:50%; transform:translate(-50%, -50%); color:#444; font-size:16px;">👿</span>
                                     </div>
                                     <div style="flex:1;">
-                                        <button class="btn-full" id="btn-enemy-import" style="margin-bottom:5px;">📂 Load GLB</button>
+                                        <button class="btn-full" id="btn-enemy-import" style="margin-bottom:5px;">📂
+                                            Load GLB</button>
                                         <div style="display:flex; align-items:center; gap:5px;">
                                             <span style="font-size:10px; color:#888;">File:</span>
-                                            <span id="e-filename" style="flex:1; font-size:10px; color:#ff6600; overflow:hidden; text-overflow:ellipsis; white-space:nowrap;">(Default Box)</span>
+                                            <span id="e-filename"
+                                                style="flex:1; font-size:10px; color:#ff6600; overflow:hidden; text-overflow:ellipsis; white-space:nowrap;">(Default
+                                                Box)</span>
                                         </div>
                                     </div>
                                 </div>
@@ -226,18 +300,24 @@
                             <!-- Animations -->
                             <div style="margin-top:10px;">
                                 <div style="font-size:11px; font-weight:bold; margin-bottom:5px;">Animations</div>
-                                <div class="prop-row"><span class="prop-label">Idle</span><select id="e-anim-idle" class="prop-input"></select></div>
-                                <div class="prop-row"><span class="prop-label">Move</span><select id="e-anim-move" class="prop-input"></select></div>
-                                <div class="prop-row"><span class="prop-label">Hit</span><select id="e-anim-hit" class="prop-input"></select></div>
-                                <div class="prop-row"><span class="prop-label">Death</span><select id="e-anim-death" class="prop-input"></select></div>
+                                <div class="prop-row"><span class="prop-label">Idle</span><select id="e-anim-idle"
+                                        class="prop-input"></select></div>
+                                <div class="prop-row"><span class="prop-label">Move</span><select id="e-anim-move"
+                                        class="prop-input"></select></div>
+                                <div class="prop-row"><span class="prop-label">Hit</span><select id="e-anim-hit"
+                                        class="prop-input"></select></div>
+                                <div class="prop-row"><span class="prop-label">Death</span><select id="e-anim-death"
+                                        class="prop-input"></select></div>
                             </div>
                         </div>
 
                         <!-- BONUS SECTION -->
                         <div id="section-bonus" class="hidden">
                             <div style="font-weight:bold; margin-bottom:10px; color:#FFD700;">Bonus Settings</div>
-                            <div class="prop-row"><span class="prop-label">Points</span><input id="b-points" type="number" step="10" class="prop-input"></div>
-                            <div class="prop-row"><span class="prop-label">Radius</span><input id="b-radius" type="number" step="0.1" class="prop-input"></div>
+                            <div class="prop-row"><span class="prop-label">Points</span><input id="b-points"
+                                    type="number" step="10" class="prop-input"></div>
+                            <div class="prop-row"><span class="prop-label">Radius</span><input id="b-radius"
+                                    type="number" step="0.1" class="prop-input"></div>
                             <div class="prop-row"><span class="prop-label">Move Style</span>
                                 <select id="b-movestyle" class="prop-input">
                                     <option value="none">None</option>
@@ -245,62 +325,82 @@
                                     <option value="patrol_up_down">Patrol (Up/Down)</option>
                                 </select>
                             </div>
-                            <div class="prop-row"><span class="prop-label">Speed</span><input id="b-speed" type="number" step="0.1" class="prop-input"></div>
-                            <div class="prop-row"><span class="prop-label">Patrol Range</span><input id="b-patrol" type="number" step="0.5" class="prop-input"></div>
-                            <div class="prop-row"><span class="prop-label">No Collision</span><input id="b-no-col" type="checkbox" style="margin:0;"></div>
-                            
+                            <div class="prop-row"><span class="prop-label">Speed</span><input id="b-speed" type="number"
+                                    step="0.1" class="prop-input"></div>
+                            <div class="prop-row"><span class="prop-label">Patrol Range</span><input id="b-patrol"
+                                    type="number" step="0.5" class="prop-input"></div>
+                            <div class="prop-row"><span class="prop-label">No Collision</span><input id="b-no-col"
+                                    type="checkbox" style="margin:0;"></div>
+
                             <!-- Bonus Model -->
                             <div style="margin-top:10px; border-top:1px solid #333; padding-top:10px;">
                                 <div style="display:flex; gap:10px; align-items:flex-start; margin-bottom:10px;">
-                                    <div id="b-glb-preview-container" style="display:none; flex:0 0 64px; height:64px; background:#111; border:1px solid #333; border-radius:4px; overflow:hidden; position:relative;">
-                                        <img id="b-glb-preview-img" style="width:100%; height:100%; object-fit:contain; display:none;">
+                                    <div id="b-glb-preview-container"
+                                        style="display:none; flex:0 0 64px; height:64px; background:#111; border:1px solid #333; border-radius:4px; overflow:hidden; position:relative;">
+                                        <img id="b-glb-preview-img"
+                                            style="width:100%; height:100%; object-fit:contain; display:none;">
                                     </div>
                                     <div style="flex:1;">
-                                        <button class="btn-full" id="btn-bonus-import" style="margin-bottom:5px;">📂 Load GLB</button>
+                                        <button class="btn-full" id="btn-bonus-import" style="margin-bottom:5px;">📂
+                                            Load GLB</button>
                                         <div style="display:flex; align-items:center; gap:5px;">
                                             <span style="font-size:10px; color:#888;">File:</span>
-                                            <span id="b-filename" style="flex:1; font-size:10px; color:#FFD700; overflow:hidden; text-overflow:ellipsis; white-space:nowrap;">(Default Sphere)</span>
+                                            <span id="b-filename"
+                                                style="flex:1; font-size:10px; color:#FFD700; overflow:hidden; text-overflow:ellipsis; white-space:nowrap;">(Default
+                                                Sphere)</span>
                                         </div>
                                     </div>
                                 </div>
                                 <div class="prop-row"><span class="prop-label">Model Y</span>
                                     <div style="display:flex; flex:1; gap:5px;">
                                         <input id="b-modely" type="number" step="0.1" class="prop-input">
-                                        <button id="btn-edit-b-modely" class="action-btn" style="flex:0 0 24px; padding:0;" title="Edit Model Offset">✏️</button>
+                                        <button id="btn-edit-b-modely" class="action-btn"
+                                            style="flex:0 0 24px; padding:0;" title="Edit Model Offset">✏️</button>
                                     </div>
                                 </div>
                             </div>
-                            
-                            <div class="prop-row"><span class="prop-label">Idle Anim</span><select id="b-anim-idle" class="prop-input"></select></div>
-                            <div class="prop-row"><span class="prop-label">Collect Anim</span><select id="b-anim-collect" class="prop-input"></select></div>
-                            <div class="prop-row"><span class="prop-label">Disappear</span><input id="b-disappear" type="checkbox" checked style="margin:0;"></div>
+
+                            <div class="prop-row"><span class="prop-label">Idle Anim</span><select id="b-anim-idle"
+                                    class="prop-input"></select></div>
+                            <div class="prop-row"><span class="prop-label">Collect Anim</span><select
+                                    id="b-anim-collect" class="prop-input"></select></div>
+                            <div class="prop-row"><span class="prop-label">Disappear</span><input id="b-disappear"
+                                    type="checkbox" checked style="margin:0;"></div>
                         </div>
 
                         <!-- BOSS SECTION -->
                         <div id="section-boss" class="hidden">
                             <div style="font-weight:bold; margin-bottom:10px; color:#cc0000;">Boss Settings</div>
-                            <div class="prop-row"><span class="prop-label">HP</span><input id="bs-hp" type="number" step="10" class="prop-input"></div>
-                            <div class="prop-row"><span class="prop-label">No Collision</span><input id="bs-no-col" type="checkbox" style="margin:0;"></div>
-                            
+                            <div class="prop-row"><span class="prop-label">HP</span><input id="bs-hp" type="number"
+                                    step="10" class="prop-input"></div>
+                            <div class="prop-row"><span class="prop-label">No Collision</span><input id="bs-no-col"
+                                    type="checkbox" style="margin:0;"></div>
+
                             <!-- Boss Model -->
-                            
+
                             <div style="margin-top:10px; border-top:1px solid #333; padding-top:10px;">
                                 <div style="display:flex; gap:10px; align-items:flex-start; margin-bottom:10px;">
-                                    <div id="bs-glb-preview-container" style="display:none; flex:0 0 64px; height:64px; background:#111; border:1px solid #333; border-radius:4px; overflow:hidden; position:relative;">
-                                        <img id="bs-glb-preview-img" style="width:100%; height:100%; object-fit:contain; display:none;">
+                                    <div id="bs-glb-preview-container"
+                                        style="display:none; flex:0 0 64px; height:64px; background:#111; border:1px solid #333; border-radius:4px; overflow:hidden; position:relative;">
+                                        <img id="bs-glb-preview-img"
+                                            style="width:100%; height:100%; object-fit:contain; display:none;">
                                     </div>
                                     <div style="flex:1;">
-                                        <button class="btn-full" id="btn-boss-import" style="margin-bottom:5px;">📂 Load GLB</button>
+                                        <button class="btn-full" id="btn-boss-import" style="margin-bottom:5px;">📂 Load
+                                            GLB</button>
                                         <div style="display:flex; align-items:center; gap:5px;">
                                             <span style="font-size:10px; color:#888;">File:</span>
-                                            <span id="bs-filename" style="flex:1; font-size:10px; color:#cc0000; overflow:hidden; text-overflow:ellipsis; white-space:nowrap;">(Default Box)</span>
+                                            <span id="bs-filename"
+                                                style="flex:1; font-size:10px; color:#cc0000; overflow:hidden; text-overflow:ellipsis; white-space:nowrap;">(Default
+                                                Box)</span>
                                         </div>
                                     </div>
                                 </div>
                                 <div class="prop-row"><span class="prop-label">Model Y</span>
                                     <div style="display:flex; flex:1; gap:5px;">
                                         <input id="bs-modely" type="number" step="0.1" class="prop-input">
-                                        <button id="btn-edit-bs-modely" class="action-btn" style="flex:0 0 24px; padding:0;" title="Edit Model Offset">✏️</button>
+                                        <button id="btn-edit-bs-modely" class="action-btn"
+                                            style="flex:0 0 24px; padding:0;" title="Edit Model Offset">✏️</button>
                                     </div>
                                 </div>
                             </div>
@@ -309,124 +409,185 @@
                         <!-- POWERUP SECTION -->
                         <div id="section-powerup" class="hidden">
                             <div style="font-weight:bold; margin-bottom:10px; color:#00cccc;">PowerUp Settings</div>
+                            <div class="prop-row">
+                                <span class="prop-label">Type</span>
+                                <select id="pu-type" class="prop-input">
+                                    <option value="hammer">Hammer (Melee)</option>
+                                    <option value="gun">Gun (Ranged)</option>
+                                    <option value="lantern">Lantern (Light Beam)</option>
+                                    <option value="speed">Speed Boost</option>
+                                    <option value="jump">Jump Boost</option>
+                                    <option value="fly">Fly (Flight)</option>
+                                </select>
+                            </div>
+
+                            <!-- GUN SPECIFIC -->
+                            <div id="panel-pu-gun" class="hidden"
+                                style="margin-top:5px; border:1px solid #444; padding:5px; border-radius:4px; background:rgba(0,0,0,0.2);">
+                                <div style="font-size:10px; font-weight:bold; margin-bottom:5px; color:#eb7b33;">Gun
+                                    Settings</div>
+                                <div class="prop-row"><span class="prop-label">Bullet Power</span><input
+                                        id="pu-bullet-power" type="number" step="1" class="prop-input"></div>
                                 <div class="prop-row">
-                                    <span class="prop-label">Type</span>
-                                    <select id="pu-type" class="prop-input">
-                                        <option value="hammer">Hammer (Melee)</option>
-                                        <option value="gun">Gun (Ranged)</option>
-                                        <option value="lantern">Lantern (Light Beam)</option>
-                                        <option value="speed">Speed Boost</option>
-                                        <option value="jump">Jump Boost</option>
-                                    </select>
+                                    <span class="prop-label">Bullet GLB</span>
+                                    <button id="btn-pu-bullet-import" class="btn-full"
+                                        style="font-size:9px; padding:4px;">📂 Load Bullet</button>
                                 </div>
-                                
-                                <!-- GUN SPECIFIC -->
-                                <div id="panel-pu-gun" class="hidden" style="margin-top:5px; border:1px solid #444; padding:5px; border-radius:4px; background:rgba(0,0,0,0.2);">
-                                    <div style="font-size:10px; font-weight:bold; margin-bottom:5px; color:#eb7b33;">Gun Settings</div>
-                                    <div class="prop-row"><span class="prop-label">Bullet Power</span><input id="pu-bullet-power" type="number" step="1" class="prop-input"></div>
-                                    <div class="prop-row">
-                                        <span class="prop-label">Bullet GLB</span>
-                                        <button id="btn-pu-bullet-import" class="btn-full" style="font-size:9px; padding:4px;">📂 Load Bullet</button>
-                                    </div>
-                                    <div style="font-size:9px; color:#888; overflow:hidden; text-overflow:ellipsis; white-space:nowrap;" id="pu-bullet-filename">None</div>
-                                </div>
+                                <div style="font-size:9px; color:#888; overflow:hidden; text-overflow:ellipsis; white-space:nowrap;"
+                                    id="pu-bullet-filename">None</div>
+                            </div>
 
-                                <!-- LANTERN SPECIFIC -->
-                                <div id="panel-pu-lantern" class="hidden" style="margin-top:5px; border:1px solid #444; padding:5px; border-radius:4px; background:rgba(0,0,0,0.2);">
-                                    <div style="font-size:10px; font-weight:bold; margin-bottom:5px; color:#ffff00;">Lantern Settings</div>
-                                    <div class="prop-row"><span class="prop-label">Freeze Time</span><input id="pu-lantern-freeze" type="number" step="0.5" value="5.0" class="prop-input"></div>
+                            <!-- LANTERN SPECIFIC -->
+                            <div id="panel-pu-lantern" class="hidden"
+                                style="margin-top:5px; border:1px solid #444; padding:5px; border-radius:4px; background:rgba(0,0,0,0.2);">
+                                <div style="font-size:10px; font-weight:bold; margin-bottom:5px; color:#ffff00;">Lantern
+                                    Settings</div>
+                                <div class="prop-row"><span class="prop-label">Freeze Time</span><input
+                                        id="pu-lantern-freeze" type="number" step="0.5" value="5.0" class="prop-input">
                                 </div>
+                            </div>
 
-                            <div class="prop-row"><span class="prop-label">Duration</span><input id="pu-dur" type="number" step="1" class="prop-input"></div>
-                                <div class="prop-row"><span class="prop-label">Hitbox Height</span><input id="pu-height" type="number" step="0.1" class="prop-input"></div>
-                                <div class="prop-row"><span class="prop-label">Model Scale</span><input id="pu-model-scale" type="number" step="0.1" class="prop-input"></div>
-                                <div class="prop-row"><span class="prop-label">No Collision</span><input id="pu-no-col" type="checkbox" class="prop-checkbox"></div>
-                            
+                            <!-- FLY SPECIFIC -->
+                            <div id="panel-pu-fly" class="hidden"
+                                style="margin-top:5px; border:1px solid #444; padding:5px; border-radius:4px; background:rgba(0,0,0,0.2);">
+                                <div style="font-size:10px; font-weight:bold; margin-bottom:5px; color:#00cccc;">Fly
+                                    Settings</div>
+                                <div class="prop-row"><span class="prop-label">Fly Anim</span><select id="pu-fly-anim"
+                                        class="prop-input"></select></div>
+                                <div class="prop-row"><span class="prop-label">Boost Force</span><input
+                                        id="pu-fly-boost" type="number" step="0.5" value="10.0" class="prop-input">
+                                </div>
+                                <div class="prop-row"><span class="prop-label">Fly Height</span><input
+                                        id="pu-fly-height" type="number" step="0.5" value="3.0" class="prop-input">
+                                </div>
+                            </div>
+
+                            <div class="prop-row"><span class="prop-label">Duration</span><input id="pu-dur"
+                                    type="number" step="1" class="prop-input"></div>
+                            <div class="prop-row"><span class="prop-label">Hitbox Height</span><input id="pu-height"
+                                    type="number" step="0.1" class="prop-input"></div>
+                            <div class="prop-row"><span class="prop-label">Model Scale</span><input id="pu-model-scale"
+                                    type="number" step="0.1" class="prop-input"></div>
+                            <div class="prop-row"><span class="prop-label">No Collision</span><input id="pu-no-col"
+                                    type="checkbox" class="prop-checkbox"></div>
+
                             <!-- PowerUp Model -->
                             <div style="margin-top:10px; border-top:1px solid #333; padding-top:10px;">
                                 <div style="display:flex; gap:10px; align-items:flex-start; margin-bottom:10px;">
-                                    <div id="pu-glb-preview-container" style="display:none; flex:0 0 64px; height:64px; background:#111; border:1px solid #333; border-radius:4px; overflow:hidden; position:relative;">
-                                        <img id="pu-glb-preview-img" style="width:100%; height:100%; object-fit:contain; display:none;">
+                                    <div id="pu-glb-preview-container"
+                                        style="display:none; flex:0 0 64px; height:64px; background:#111; border:1px solid #333; border-radius:4px; overflow:hidden; position:relative;">
+                                        <img id="pu-glb-preview-img"
+                                            style="width:100%; height:100%; object-fit:contain; display:none;">
                                     </div>
                                     <div style="flex:1;">
-                                        <button class="btn-full" id="btn-powerup-import" style="margin-bottom:5px;">📂 Load GLB</button>
+                                        <button class="btn-full" id="btn-powerup-import" style="margin-bottom:5px;">📂
+                                            Load GLB</button>
                                         <div style="display:flex; align-items:center; gap:5px;">
                                             <span style="font-size:10px; color:#888;">File:</span>
-                                            <span id="pu-filename" style="flex:1; font-size:10px; color:#00cccc; overflow:hidden; text-overflow:ellipsis; white-space:nowrap;">(Default Box)</span>
+                                            <span id="pu-filename"
+                                                style="flex:1; font-size:10px; color:#00cccc; overflow:hidden; text-overflow:ellipsis; white-space:nowrap;">(Default
+                                                Box)</span>
                                         </div>
                                     </div>
                                 </div>
-                                <div class="prop-row"><span class="prop-label">Idle</span><select id="pu-anim" class="prop-input"></select></div>
-                                <div class="prop-row"><span class="prop-label">Equip Anim</span><select id="pu-anim-equip" class="prop-input"></select></div>
+                                <div class="prop-row"><span class="prop-label">Idle</span><select id="pu-anim"
+                                        class="prop-input"></select></div>
+                                <div class="prop-row"><span class="prop-label">Equip Anim</span><select
+                                        id="pu-anim-equip" class="prop-input"></select></div>
                                 <div class="prop-row"><span class="prop-label">Model Y</span>
                                     <div style="display:flex; flex:1; gap:5px;">
                                         <input id="pu-modely" type="number" step="0.1" class="prop-input">
-                                        <button id="btn-edit-pu-modely" class="action-btn" style="flex:0 0 24px; padding:0;" title="Edit Model Offset">✏️</button>
+                                        <button id="btn-edit-pu-modely" class="action-btn"
+                                            style="flex:0 0 24px; padding:0;" title="Edit Model Offset">✏️</button>
                                     </div>
                                 </div>
                             </div>
 
                             <div style="margin-top:10px; border-top:1px solid #333; padding-top:10px;">
-                                <div style="font-size:11px; font-weight:bold; margin-bottom:5px; color:#00cccc;">Equip Position</div>
-                                <div class="prop-row"><span class="prop-label">Offset X</span><input id="pu-offx" type="number" step="0.05" class="prop-input"></div>
-                                <div class="prop-row"><span class="prop-label">Offset Y</span><input id="pu-offy" type="number" step="0.05" class="prop-input"></div>
-                                <div class="prop-row"><span class="prop-label">Offset Z</span><input id="pu-offz" type="number" step="0.05" class="prop-input"></div>
-                                <div style="font-size:11px; font-weight:bold; margin-top:10px; margin-bottom:5px; color:#00cccc;">Equip Rotation</div>
-                                <div class="prop-row"><span class="prop-label">Rot X</span><input id="pu-rotx" type="number" step="1" class="prop-input"></div>
-                                <div class="prop-row"><span class="prop-label">Rot Y</span><input id="pu-roty" type="number" step="1" class="prop-input"></div>
-                                <div class="prop-row"><span class="prop-label">Rot Z</span><input id="pu-rotz" type="number" step="1" class="prop-input"></div>
-                                <button class="btn-full" id="btn-pu-preview-equip" style="margin-top:5px; background:#222; border:1px solid #00cccc;">👤 Preview on Player</button>
+                                <div style="font-size:11px; font-weight:bold; margin-bottom:5px; color:#00cccc;">Equip
+                                    Position</div>
+                                <div class="prop-row"><span class="prop-label">Offset X</span><input id="pu-offx"
+                                        type="number" step="0.05" class="prop-input"></div>
+                                <div class="prop-row"><span class="prop-label">Offset Y</span><input id="pu-offy"
+                                        type="number" step="0.05" class="prop-input"></div>
+                                <div class="prop-row"><span class="prop-label">Offset Z</span><input id="pu-offz"
+                                        type="number" step="0.05" class="prop-input"></div>
+                                <div
+                                    style="font-size:11px; font-weight:bold; margin-top:10px; margin-bottom:5px; color:#00cccc;">
+                                    Equip Rotation</div>
+                                <div class="prop-row"><span class="prop-label">Rot X</span><input id="pu-rotx"
+                                        type="number" step="1" class="prop-input"></div>
+                                <div class="prop-row"><span class="prop-label">Rot Y</span><input id="pu-roty"
+                                        type="number" step="1" class="prop-input"></div>
+                                <div class="prop-row"><span class="prop-label">Rot Z</span><input id="pu-rotz"
+                                        type="number" step="1" class="prop-input"></div>
+                                <button class="btn-full" id="btn-pu-preview-equip"
+                                    style="margin-top:5px; background:#222; border:1px solid #00cccc;">👤 Preview on
+                                    Player</button>
                             </div>
                         </div>
 
-                         <!-- SPAWN SECTION -->
+                        <!-- SPAWN SECTION -->
                         <div id="section-spawn" class="hidden">
                             <div style="font-weight:bold; margin-bottom:10px; color:#aa5500;">Spawn Settings</div>
-                            <div class="prop-row"><span class="prop-label">Rate (ms)</span><input id="sp-rate" type="number" step="100" class="prop-input"></div>
-                            
+                            <div class="prop-row"><span class="prop-label">Rate (ms)</span><input id="sp-rate"
+                                    type="number" step="100" class="prop-input"></div>
+
                             <div style="margin-top:10px; border-top:1px solid #333; padding-top:10px;">
                                 <div style="display:flex; gap:10px; align-items:flex-start; margin-bottom:10px;">
-                                    <div id="sp-glb-preview-container" style="display:none; flex:0 0 64px; height:64px; background:#111; border:1px solid #333; border-radius:4px; overflow:hidden; position:relative;">
-                                        <img id="sp-glb-preview-img" style="width:100%; height:100%; object-fit:contain; display:none;">
+                                    <div id="sp-glb-preview-container"
+                                        style="display:none; flex:0 0 64px; height:64px; background:#111; border:1px solid #333; border-radius:4px; overflow:hidden; position:relative;">
+                                        <img id="sp-glb-preview-img"
+                                            style="width:100%; height:100%; object-fit:contain; display:none;">
                                     </div>
                                     <div style="flex:1;">
-                                        <button class="btn-full" id="btn-spawn-import" style="margin-bottom:5px;">📂 Load GLB</button>
+                                        <button class="btn-full" id="btn-spawn-import" style="margin-bottom:5px;">📂
+                                            Load GLB</button>
                                         <div style="display:flex; align-items:center; gap:5px;">
                                             <span style="font-size:10px; color:#888;">File:</span>
-                                            <span id="sp-filename" style="flex:1; font-size:10px; color:#aa5500; overflow:hidden; text-overflow:ellipsis; white-space:nowrap;">(Default Cone)</span>
+                                            <span id="sp-filename"
+                                                style="flex:1; font-size:10px; color:#aa5500; overflow:hidden; text-overflow:ellipsis; white-space:nowrap;">(Default
+                                                Cone)</span>
                                         </div>
                                     </div>
                                 </div>
                                 <div class="prop-row"><span class="prop-label">Model Y</span>
                                     <div style="display:flex; flex:1; gap:5px;">
                                         <input id="sp-modely" type="number" step="0.1" class="prop-input">
-                                        <button id="btn-edit-sp-modely" class="action-btn" style="flex:0 0 24px; padding:0;" title="Edit Model Offset">✏️</button>
+                                        <button id="btn-edit-sp-modely" class="action-btn"
+                                            style="flex:0 0 24px; padding:0;" title="Edit Model Offset">✏️</button>
                                     </div>
                                 </div>
                             </div>
                         </div>
 
-                         <!-- GOAL SECTION -->
+                        <!-- GOAL SECTION -->
                         <div id="section-goal" class="hidden">
                             <div style="font-weight:bold; margin-bottom:10px; color:#D4AF37;">Goal Settings</div>
-                            
+
                             <div style="margin-top:10px; border-top:1px solid #333; padding-top:10px;">
                                 <div style="display:flex; gap:10px; align-items:flex-start; margin-bottom:10px;">
-                                    <div id="g-glb-preview-container" style="display:none; flex:0 0 64px; height:64px; background:#111; border:1px solid #333; border-radius:4px; overflow:hidden; position:relative;">
-                                        <img id="g-glb-preview-img" style="width:100%; height:100%; object-fit:contain; display:none;">
+                                    <div id="g-glb-preview-container"
+                                        style="display:none; flex:0 0 64px; height:64px; background:#111; border:1px solid #333; border-radius:4px; overflow:hidden; position:relative;">
+                                        <img id="g-glb-preview-img"
+                                            style="width:100%; height:100%; object-fit:contain; display:none;">
                                     </div>
                                     <div style="flex:1;">
-                                        <button class="btn-full" id="btn-goal-import" style="margin-bottom:5px;">📂 Load GLB</button>
+                                        <button class="btn-full" id="btn-goal-import" style="margin-bottom:5px;">📂 Load
+                                            GLB</button>
                                         <div style="display:flex; align-items:center; gap:5px;">
                                             <span style="font-size:10px; color:#888;">File:</span>
-                                            <span id="g-filename" style="flex:1; font-size:10px; color:#D4AF37; overflow:hidden; text-overflow:ellipsis; white-space:nowrap;">(Default Box)</span>
+                                            <span id="g-filename"
+                                                style="flex:1; font-size:10px; color:#D4AF37; overflow:hidden; text-overflow:ellipsis; white-space:nowrap;">(Default
+                                                Box)</span>
                                         </div>
                                     </div>
                                 </div>
                                 <div class="prop-row"><span class="prop-label">Model Y</span>
                                     <div style="display:flex; flex:1; gap:5px;">
                                         <input id="g-modely" type="number" step="0.1" class="prop-input">
-                                        <button id="btn-edit-g-modely" class="action-btn" style="flex:0 0 24px; padding:0;" title="Edit Model Offset">✏️</button>
+                                        <button id="btn-edit-g-modely" class="action-btn"
+                                            style="flex:0 0 24px; padding:0;" title="Edit Model Offset">✏️</button>
                                     </div>
                                 </div>
                             </div>
@@ -436,32 +597,49 @@
                         <div id="section-catcher" class="hidden">
                             <div style="font-weight:bold; margin-bottom:10px; color:#5500aa;">Catcher Settings</div>
                             <div class="prop-row"><span class="prop-label">Filter Type</span>
-                                <select id="c-filter-type" class="prop-input"><option value="all">All</option><option value="player">Player</option><option value="enemy">Enemy</option><option value="tag">Tag</option></select>
+                                <select id="c-filter-type" class="prop-input">
+                                    <option value="all">All</option>
+                                    <option value="player">Player</option>
+                                    <option value="enemy">Enemy</option>
+                                    <option value="tag">Tag</option>
+                                </select>
                             </div>
-                            <div class="prop-row"><span class="prop-label">Filter Tag</span><input id="c-filter-tag" type="text" class="prop-input"></div>
+                            <div class="prop-row"><span class="prop-label">Filter Tag</span><input id="c-filter-tag"
+                                    type="text" class="prop-input"></div>
                             <div class="prop-row"><span class="prop-label">Move Type</span>
-                                <select id="c-move-type" class="prop-input"><option value="teleport">Teleport</option><option value="translation">Translation</option></select>
+                                <select id="c-move-type" class="prop-input">
+                                    <option value="teleport">Teleport</option>
+                                    <option value="translation">Translation</option>
+                                </select>
                             </div>
-                            <div class="prop-row"><span class="prop-label">Key Trigger</span><input id="c-key" type="text" class="prop-input" placeholder="e.g. w, e, space"></div>
-                            <button class="btn-full" id="btn-add-catcher-target" style="margin:10px 0; border:1px dashed #aa00ff;">+ Add Linked Target</button>
-                            
+                            <div class="prop-row"><span class="prop-label">Key Trigger</span><input id="c-key"
+                                    type="text" class="prop-input" placeholder="e.g. w, e, space"></div>
+                            <button class="btn-full" id="btn-add-catcher-target"
+                                style="margin:10px 0; border:1px dashed #aa00ff;">+ Add Linked Target</button>
+
                             <div style="margin-top:10px; border-top:1px solid #333; padding-top:10px;">
                                 <div style="display:flex; gap:10px; align-items:flex-start; margin-bottom:10px;">
-                                    <div id="c-glb-preview-container" style="display:none; flex:0 0 64px; height:64px; background:#111; border:1px solid #333; border-radius:4px; overflow:hidden; position:relative;">
-                                        <img id="c-glb-preview-img" style="width:100%; height:100%; object-fit:contain; display:none;">
+                                    <div id="c-glb-preview-container"
+                                        style="display:none; flex:0 0 64px; height:64px; background:#111; border:1px solid #333; border-radius:4px; overflow:hidden; position:relative;">
+                                        <img id="c-glb-preview-img"
+                                            style="width:100%; height:100%; object-fit:contain; display:none;">
                                     </div>
                                     <div style="flex:1;">
-                                        <button class="btn-full" id="btn-catcher-import" style="margin-bottom:5px;">📂 Load GLB</button>
+                                        <button class="btn-full" id="btn-catcher-import" style="margin-bottom:5px;">📂
+                                            Load GLB</button>
                                         <div style="display:flex; align-items:center; gap:5px;">
                                             <span style="font-size:10px; color:#888;">File:</span>
-                                            <span id="c-filename" style="flex:1; font-size:10px; color:#5500aa; overflow:hidden; text-overflow:ellipsis; white-space:nowrap;">(Default Cylinder)</span>
+                                            <span id="c-filename"
+                                                style="flex:1; font-size:10px; color:#5500aa; overflow:hidden; text-overflow:ellipsis; white-space:nowrap;">(Default
+                                                Cylinder)</span>
                                         </div>
                                     </div>
                                 </div>
                                 <div class="prop-row"><span class="prop-label">Model Y</span>
                                     <div style="display:flex; flex:1; gap:5px;">
                                         <input id="c-modely" type="number" step="0.1" class="prop-input">
-                                        <button id="btn-edit-c-modely" class="action-btn" style="flex:0 0 24px; padding:0;" title="Edit Model Offset">✏️</button>
+                                        <button id="btn-edit-c-modely" class="action-btn"
+                                            style="flex:0 0 24px; padding:0;" title="Edit Model Offset">✏️</button>
                                     </div>
                                 </div>
                             </div>
@@ -478,29 +656,36 @@
                                     <option value="8WAY">8 WAY</option>
                                 </select>
                             </div>
-                            <div class="prop-row"><span class="prop-label">FOV</span><input id="c-fov" type="number" step="1" class="prop-input"></div>
+                            <div class="prop-row"><span class="prop-label">FOV</span><input id="c-fov" type="number"
+                                    step="1" class="prop-input"></div>
                         </div>
 
                         <div id="section-model" class="hidden">
                             <div style="font-weight:bold; margin-bottom:10px; color:#2f5d8e;">Model Settings</div>
-                            
+
                             <div style="margin-top:10px; border-top:1px solid #333; padding-top:10px;">
                                 <div style="display:flex; gap:10px; align-items:flex-start; margin-bottom:10px;">
-                                    <div id="m-glb-preview-container" style="display:none; flex:0 0 64px; height:64px; background:#111; border:1px solid #333; border-radius:4px; overflow:hidden; position:relative;">
-                                        <img id="m-glb-preview-img" style="width:100%; height:100%; object-fit:contain; display:none;">
+                                    <div id="m-glb-preview-container"
+                                        style="display:none; flex:0 0 64px; height:64px; background:#111; border:1px solid #333; border-radius:4px; overflow:hidden; position:relative;">
+                                        <img id="m-glb-preview-img"
+                                            style="width:100%; height:100%; object-fit:contain; display:none;">
                                     </div>
                                     <div style="flex:1;">
-                                        <button class="btn-full" id="btn-model-import" style="margin-bottom:5px;">📂 Load GLB</button>
+                                        <button class="btn-full" id="btn-model-import" style="margin-bottom:5px;">📂
+                                            Load GLB</button>
                                         <div style="display:flex; align-items:center; gap:5px;">
                                             <span style="font-size:10px; color:#888;">File:</span>
-                                            <span id="m-filename" style="flex:1; font-size:10px; color:#2f5d8e; overflow:hidden; text-overflow:ellipsis; white-space:nowrap;">(Default Box)</span>
+                                            <span id="m-filename"
+                                                style="flex:1; font-size:10px; color:#2f5d8e; overflow:hidden; text-overflow:ellipsis; white-space:nowrap;">(Default
+                                                Box)</span>
                                         </div>
                                     </div>
                                 </div>
                                 <div class="prop-row"><span class="prop-label">Model Y</span>
                                     <div style="display:flex; flex:1; gap:5px;">
                                         <input id="m-modely" type="number" step="0.1" class="prop-input">
-                                        <button id="btn-edit-m-modely" class="action-btn" style="flex:0 0 24px; padding:0;" title="Edit Model Offset">✏️</button>
+                                        <button id="btn-edit-m-modely" class="action-btn"
+                                            style="flex:0 0 24px; padding:0;" title="Edit Model Offset">✏️</button>
                                     </div>
                                 </div>
                             </div>
@@ -508,18 +693,28 @@
                             <!-- Animations -->
                             <div style="margin-top:10px;">
                                 <div style="font-size:11px; font-weight:bold; margin-bottom:5px;">Animations</div>
-                                <div class="prop-row"><span class="prop-label">Default Anim</span><select id="m-anim-default" class="prop-input"></select></div>
-                                <div class="prop-row"><span class="prop-label">No Collision</span><input id="m-no-col" type="checkbox" style="margin:0;"></div>
+                                <div class="prop-row"><span class="prop-label">Default Anim</span><select
+                                        id="m-anim-default" class="prop-input"></select></div>
+                                <div class="prop-row"><span class="prop-label">No Collision</span><input id="m-no-col"
+                                        type="checkbox" style="margin:0;"></div>
                             </div>
                         </div>
 
                         <div id="section-game" class="hidden">
                             <div style="font-weight:bold; margin-bottom:10px;">Game Settings</div>
                             <div class="prop-row"><span class="prop-label">Type</span>
-                                <select class="prop-input"><option>FPS</option><option selected>TPS</option><option>PLATFORM</option><option>2D</option><option>RACE</option></select>
+                                <select class="prop-input">
+                                    <option>FPS</option>
+                                    <option selected>TPS</option>
+                                    <option>PLATFORM</option>
+                                    <option>2D</option>
+                                    <option>RACE</option>
+                                </select>
                             </div>
-                            <div class="prop-row"><span class="prop-label">Pixel Effect</span><input id="game-pixel-effect" type="checkbox" style="margin:0;"></div>
-                            <div class="prop-row"><span class="prop-label">Pixel Size</span><input id="game-pixel-size" type="number" value="6" step="1" class="prop-input"></div>
+                            <div class="prop-row"><span class="prop-label">Pixel Effect</span><input
+                                    id="game-pixel-effect" type="checkbox" style="margin:0;"></div>
+                            <div class="prop-row"><span class="prop-label">Pixel Size</span><input id="game-pixel-size"
+                                    type="number" value="6" step="1" class="prop-input"></div>
                         </div>
 
                         <!-- Properties Panel for Collision -->
@@ -527,25 +722,31 @@
                             <div class="prop-row"><span class="prop-label">Action</span>
                                 <select id="col-action" class="prop-input">
                                     <option value="restart">Restart Game</option>
-                                        <option value="load_level">Load Level</option>
-                                        <option value="hide_object">Hide Object</option>
-                                        <option value="play_anim">Play Animation</option>
-                                        <option value="unfreeze">Unfreeze Enemy</option>
-                                        <option value="alert">Alert</option>
+                                    <option value="load_level">Load Level</option>
+                                    <option value="hide_object">Hide Object</option>
+                                    <option value="play_anim">Play Animation</option>
+                                    <option value="unfreeze">Unfreeze Enemy</option>
+                                    <option value="alert">Alert</option>
                                 </select>
                             </div>
                             <div class="prop-row">
                                 <span class="prop-label">Add Target</span>
                                 <div style="display:flex; flex:1; gap:2px;">
-                                    <input id="col-target-input" type="text" list="col-target-list" class="prop-input" placeholder="Search...">
-                                    <button id="btn-col-add-target" class="btn-icon-small" style="background:#222; border:1px solid #444;">➕</button>
+                                    <input id="col-target-input" type="text" list="col-target-list" class="prop-input"
+                                        placeholder="Search...">
+                                    <button id="btn-col-add-target" class="btn-icon-small"
+                                        style="background:#222; border:1px solid #444;">➕</button>
                                 </div>
                             </div>
                             <datalist id="col-target-list"></datalist>
-                            <div id="col-targets-container" style="margin-top:5px; background:rgba(0,0,0,0.2); border-radius:4px; max-height:80px; overflow-y:auto; padding:2px; display:flex; flex-direction:column; gap:2px;"></div>
-                            
-                            <div class="prop-row"><span class="prop-label">Value</span><input id="col-value" type="text" list="col-value-list" class="prop-input"></div>
-                            <div class="prop-row"><span class="prop-label">One Shot</span><input id="col-oneshot" type="checkbox" style="margin:0;"></div>
+                            <div id="col-targets-container"
+                                style="margin-top:5px; background:rgba(0,0,0,0.2); border-radius:4px; max-height:80px; overflow-y:auto; padding:2px; display:flex; flex-direction:column; gap:2px;">
+                            </div>
+
+                            <div class="prop-row"><span class="prop-label">Value</span><input id="col-value" type="text"
+                                    list="col-value-list" class="prop-input"></div>
+                            <div class="prop-row"><span class="prop-label">One Shot</span><input id="col-oneshot"
+                                    type="checkbox" style="margin:0;"></div>
                         </div>
                     </div>
                 </div>
@@ -563,7 +764,8 @@
                 </div>
             </div>
             <div id="asset-menu" class="asset-menu">
-                <div class="asset-menu-item" data-type="Player" style="color:var(--player-color); font-weight:bold;">👤 Aggiungi Player</div>
+                <div class="asset-menu-item" data-type="Player" style="color:var(--player-color); font-weight:bold;">👤
+                    Aggiungi Player</div>
                 <div class="asset-menu-item" data-type="load">📂 Carica ASSET (GLB)</div>
                 <div class="asset-menu-item" data-type="Enemy">👿 Aggiungi Nemico</div>
                 <div class="asset-menu-item" data-type="Bonus">⭐ Aggiungi Bonus</div>
@@ -579,4 +781,5 @@
 
     <script type="module" src="js/App.js"></script>
 </body>
+
 </html>

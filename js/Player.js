@@ -25,6 +25,7 @@ export const PlayerFactory = {
                 { name: 'Walk Right', key: 'd', type: 'Walk', anim: '', mirror: false, active: true },
                 { name: 'Walk Left', key: 'a', type: 'Walk', anim: '', mirror: true, active: true },
                 { name: 'Jump', key: ' ', type: 'Jump', anim: '', mirror: false, active: true },
+                { name: 'Fly', key: '', type: 'Fly', anim: '', mirror: false, active: true },
                 { name: 'Death', key: '', type: 'Death', anim: '', mirror: false, active: true }
             ],
             speed: 0.4,
