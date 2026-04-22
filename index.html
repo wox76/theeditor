@@ -9,9 +9,10 @@
     <script type="importmap">
         {
             "imports": {
-                "three": "https://unpkg.com/three@0.160.0/build/three.module.js",
-                "three/addons/": "https://unpkg.com/three@0.160.0/examples/jsm/",
-                "three-mesh-bvh": "https://unpkg.com/three-mesh-bvh@0.7.3/build/index.module.js"
+                "three": "https://unpkg.com/three@0.178.0/build/three.module.js",
+                "three/addons/": "https://unpkg.com/three@0.178.0/examples/jsm/",
+                "three-mesh-bvh": "https://unpkg.com/three-mesh-bvh@0.7.3/build/index.module.js",
+                "@sparkjsdev/spark": "https://sparkjs.dev/releases/spark/0.1.10/spark.module.js"
             }
         }
     </script>
@@ -20,6 +21,7 @@
 <body>
 
     <input type="file" id="glb-input" accept=".glb,.gltf" style="display: none;">
+    <input type="file" id="splat-input" accept=".splat,.ply,.spz,.ksplat" style="display: none;">
     <input type="file" id="project-load-input" accept=".json" style="display: none;">
 
     <div id="app-container">
@@ -39,11 +41,42 @@
                             </svg></button>
                     </div>
                     <button class="btn-full" id="btn-game-props">⚙️ Game Properties</button>
+
+                    <!-- LEVEL MANAGER -->
+                    <div style="margin-top:12px; border-top:1px solid #333; padding-top:10px;">
+                        <div class="level-manager-header">🗺️ Levels</div>
+                        <div id="level-list" style="max-height:160px; overflow-y:auto; margin-bottom:6px;"></div>
+                        <div style="display:flex; gap:5px; flex-wrap:wrap;">
+                            <button class="btn-full" id="btn-add-level" style="flex:1; background:#2a3a2a; border:1px dashed #4caf50; color:#4caf50;">＋ Add Scene</button>
+                            <button class="btn-full" id="btn-import-level-json" style="flex:1; background:#2a2a3a; border:1px dashed #5588cc; color:#5588cc;" title="Carica un JSON come nuovo livello">📂 Carica JSON</button>
+                        </div>
+                        <button class="btn-full" id="btn-config-endscreen" style="background:#3a2a3a; border:1px dashed #cc55cc; color:#cc55cc; margin-top:4px;" title="Configura schermata finale di gioco">🎬 End Screen Config</button>
+                    </div>
                 </div>
             </aside>
             <div class="resizer resizer-v" id="resizer-left"></div>
 
             <main id="viewport">
+                <!-- SPLASH SCREEN -->
+                <div id="game-splash" class="hidden">
+                    <div class="splash-decoration"></div>
+                    <div class="splash-title" id="splash-title">Web 3D Game</div>
+                    <div class="splash-subtitle">3D Editor Engine</div>
+                    <div class="splash-level-name" id="splash-level-name"></div>
+                    <div class="splash-prompt">Press Any Key to Continue</div>
+                </div>
+
+                <!-- END SCREEN -->
+                <div id="game-endscreen" class="hidden">
+                    <video id="endscreen-video" autoplay loop muted style="position:absolute;inset:0;width:100%;height:100%;object-fit:cover;z-index:0;display:none;"></video>
+                    <img id="endscreen-image" style="position:absolute;inset:0;width:100%;height:100%;object-fit:cover;z-index:0;display:none;" alt="">
+                    <div class="endscreen-overlay">
+                        <div class="endscreen-title" id="endscreen-title">🏆 GIOCO COMPLETATO!</div>
+                        <div class="endscreen-subtitle" id="endscreen-subtitle"></div>
+                        <div class="endscreen-prompt">Premi un tasto o clicca per tornare al titolo</div>
+                    </div>
+                </div>
+
                 <div id="game-hud" class="hidden">
                     <div class="hud-item" id="hud-score">Score: 0</div>
                     <div class="hud-item" id="hud-lives">
@@ -165,8 +198,8 @@
                                 </div>
                             </div>
 
-                            <!-- Platform 2.5D / 8WAY Specific Panel -->
-                            <div id="panel-platform" class="hidden">
+                            <!-- Movement Settings Panel -->
+                            <div id="panel-platform">
                                 <div style="font-weight:bold; font-size:11px; color:var(--accent); margin:10px 0 5px;">
                                     Movement Settings</div>
                                 <div class="prop-row"><span class="prop-label">Speed</span><input id="p-speed"
@@ -186,6 +219,26 @@
                                             style="flex:0 0 24px; padding:0;" title="Edit Model Offset">✏️</button>
                                     </div>
                                 </div>
+                            </div>
+
+                            <!-- Sprint Settings (Visible in all modes) -->
+                            <div style="font-weight:bold; font-size:11px; color:var(--accent); margin:10px 0 5px;">Sprint Settings</div>
+                            <div class="prop-row">
+                                <span class="prop-label">Enable Sprint</span>
+                                <input id="p-sprint-enable" type="checkbox" style="margin:0;">
+                            </div>
+                            <div class="prop-row">
+                                <span class="prop-label">Sprint Key</span>
+                                <select id="p-sprint-key" class="prop-input">
+                                    <option value="shift">Shift</option>
+                                    <option value="ctrl">Ctrl</option>
+                                    <option value="alt">Alt</option>
+                                    <option value="space">Space</option>
+                                </select>
+                            </div>
+                            <div class="prop-row">
+                                <span class="prop-label">Multiplier</span>
+                                <input id="p-sprint-mult" type="number" step="0.1" value="1.5" class="prop-input">
                             </div>
 
                             <div class="action-accordion">
@@ -590,6 +643,18 @@
                                             style="flex:0 0 24px; padding:0;" title="Edit Model Offset">✏️</button>
                                     </div>
                                 </div>
+                                <div class="prop-row"><span class="prop-label">Action Type</span>
+                                    <select id="g-action-type" class="prop-input">
+                                        <option value="next_level">Next Level (Default)</option>
+                                        <option value="load_level">Specific Level</option>
+                                        <option value="restart">Restart Level</option>
+                                        <option value="alert">Message/Alert</option>
+                                    </select>
+                                </div>
+                                <div class="prop-row"><span class="prop-label">Value</span><input id="g-action-value"
+                                        type="text" class="prop-input" placeholder="e.g. Level Index or Msg"></div>
+                                <div class="prop-row"><span class="prop-label">No Collision</span><input id="g-no-col"
+                                        type="checkbox" class="prop-input-check"></div>
                             </div>
                         </div>
 
@@ -660,6 +725,52 @@
                                     step="1" class="prop-input"></div>
                         </div>
 
+                        <!-- LIGHT SECTION -->
+                        <div id="section-light" class="hidden">
+                            <div style="font-weight:bold; margin-bottom:10px; color:#ffff00;">Light Settings</div>
+                            <div class="prop-row"><span class="prop-label">Color</span><input id="l-color" type="color"
+                                    class="prop-input" style="padding:0; height:24px;"></div>
+                            <div class="prop-row"><span class="prop-label">Intensity</span><input id="l-intensity"
+                                    type="number" step="0.1" class="prop-input"></div>
+
+                            <div id="panel-l-distance" class="prop-row"><span class="prop-label">Distance</span><input
+                                    id="l-distance" type="number" step="1" class="prop-input"></div>
+                            <div id="panel-l-angle" class="prop-row hidden"><span class="prop-label">Angle
+                                    (Deg)</span><input id="l-angle" type="number" step="1" class="prop-input"></div>
+                            <div id="panel-l-penumbra" class="prop-row hidden"><span
+                                    class="prop-label">Penumbra</span><input id="l-penumbra" type="number" step="0.05"
+                                    class="prop-input"></div>
+                            <div id="panel-l-decay" class="prop-row hidden"><span class="prop-label">Decay</span><input
+                                    id="l-decay" type="number" step="0.1" class="prop-input"></div>
+
+                            <div style="font-weight:bold; margin-bottom:5px; margin-top:20px; color:#ffaa00;">Shadow
+                                Settings</div>
+                            <div class="prop-row"><span class="prop-label">Cast Shadow</span><input id="l-cast-shadow"
+                                    type="checkbox" style="margin:0;"></div>
+                            <div class="prop-row" style="margin-top:5px;"><span class="prop-label">Resolution</span>
+                                <select id="l-shadow-res" class="prop-input">
+                                    <option value="512">512</option>
+                                    <option value="1024">1024</option>
+                                    <option value="2048">2048</option>
+                                    <option value="4096">4096</option>
+                                </select>
+                            </div>
+                            <div class="prop-row"><span class="prop-label">Bias</span><input id="l-shadow-bias"
+                                    type="number" step="0.0001" class="prop-input"></div>
+                            <div class="prop-row"><span class="prop-label">Normal Bias</span><input
+                                    id="l-shadow-normal-bias" type="number" step="0.01" class="prop-input"></div>
+                            <div class="prop-row"><span class="prop-label">Radius (Soft)</span><input
+                                    id="l-shadow-radius" type="number" step="0.1" class="prop-input"></div>
+                            <div class="prop-row"><span class="prop-label">Cam Near</span><input id="l-shadow-near"
+                                    type="number" step="0.1" class="prop-input"></div>
+                            <div class="prop-row"><span class="prop-label">Cam Far</span><input id="l-shadow-far"
+                                    type="number" step="1" class="prop-input"></div>
+                            <div id="panel-l-shadow-size" class="prop-row hidden"><span class="prop-label">Cam
+                                    Size</span><input id="l-shadow-size" type="number" step="1" class="prop-input">
+                            </div>
+
+                        </div>
+
                         <div id="section-model" class="hidden">
                             <div style="font-weight:bold; margin-bottom:10px; color:#2f5d8e;">Model Settings</div>
 
@@ -702,6 +813,32 @@
 
                         <div id="section-game" class="hidden">
                             <div style="font-weight:bold; margin-bottom:10px;">Game Settings</div>
+                            <div class="prop-row"><span class="prop-label">Game Title</span><input id="game-title-input"
+                                    type="text" class="prop-input" placeholder="Web 3D Game"></div>
+                            <div class="prop-row" style="align-items:flex-start;">
+                                <span class="prop-label">Splash Image</span>
+                                <div style="flex:1; display:flex; flex-direction:column; gap:5px;">
+                                    <button class="btn-full" id="btn-splash-import" style="padding:4px; font-size:10px;">📂 Upload Image</button>
+                                    <div id="splash-preview-container" style="display:none; height:40px; border:1px solid #333; overflow:hidden; border-radius:4px;">
+                                        <img id="splash-preview-img" style="width:100%; height:100%; object-fit:cover;">
+                                    </div>
+                                    <button id="btn-splash-clear" class="btn-full danger hidden" style="padding:2px; font-size:9px;">Remove Image</button>
+                                </div>
+                            </div>
+                            <div class="prop-row"><span class="prop-label">Splash Subtitle</span><input id="game-subtitle-input"
+                                    type="text" class="prop-input" placeholder="3D Editor Engine"></div>
+                            <div class="prop-row"><span class="prop-label">Prompt Bg</span><input id="game-splash-prompt-bg"
+                                    type="text" class="prop-input" placeholder="rgba(255,255,255,0.1)"></div>
+                            <div class="prop-row"><span class="prop-label">Prompt Color</span><input id="game-splash-prompt-color"
+                                    type="color" class="prop-input" style="padding:0; height:24px;"></div>
+                            <div class="prop-row" style="align-items:flex-start;">
+                                <span class="prop-label">Splash Music</span>
+                                <div style="flex:1; display:flex; flex-direction:column; gap:5px;">
+                                    <button class="btn-full" id="btn-splash-music" style="padding:4px; font-size:10px;">🎵 Choose Audio</button>
+                                    <div id="splash-music-filename" style="font-size:9px; color:#aaa; font-style:italic; white-space:nowrap; overflow:hidden; text-overflow:ellipsis;">(None)</div>
+                                    <button id="btn-splash-music-clear" class="btn-full danger hidden" style="padding:2px; font-size:9px;">Remove Music</button>
+                                </div>
+                            </div>
                             <div class="prop-row"><span class="prop-label">Type</span>
                                 <select class="prop-input">
                                     <option>FPS</option>
@@ -711,10 +848,62 @@
                                     <option>RACE</option>
                                 </select>
                             </div>
+
+                            <div style="font-weight:bold; margin-bottom:10px; margin-top:20px; color:var(--accent);">
+                                Render Engine</div>
+                            <div class="prop-row"><span class="prop-label">Lettura Materiali PBR</span><input
+                                    id="game-pbr" type="checkbox" style="margin:0;"></div>
+                            <div class="prop-row"><span class="prop-label">Luci Ombre</span><input id="game-shadows"
+                                    type="checkbox" style="margin:0;"></div>
+                            <div class="prop-row"><span class="prop-label">Reflection</span><input id="game-reflections"
+                                    type="checkbox" style="margin:0;"></div>
+
+                            <div style="font-weight:bold; margin-bottom:10px; margin-top:20px; color:#ff00ea;">Post
+                                Processing</div>
                             <div class="prop-row"><span class="prop-label">Pixel Effect</span><input
                                     id="game-pixel-effect" type="checkbox" style="margin:0;"></div>
                             <div class="prop-row"><span class="prop-label">Pixel Size</span><input id="game-pixel-size"
                                     type="number" value="6" step="1" class="prop-input"></div>
+
+                            <!-- END SCREEN CONFIG -->
+                            <div style="font-weight:bold; margin-bottom:8px; margin-top:20px; color:#cc55cc;">🎬 End Screen</div>
+                            <div class="prop-row"><span class="prop-label">Titolo</span><input id="endscreen-title-input" type="text" class="prop-input" placeholder="🏆 GIOCO COMPLETATO!"></div>
+                            <div class="prop-row"><span class="prop-label">Sottotitolo</span><input id="endscreen-subtitle-input" type="text" class="prop-input" placeholder=""></div>
+                            <div class="prop-row" style="align-items:flex-start;">
+                                <span class="prop-label">Immagine</span>
+                                <div style="flex:1; display:flex; flex-direction:column; gap:4px;">
+                                    <button class="btn-full" id="btn-endscreen-image" style="padding:4px; font-size:10px;">📂 Upload Image</button>
+                                    <div id="endscreen-image-preview" style="display:none; height:40px; border:1px solid #333; overflow:hidden; border-radius:4px;">
+                                        <img id="endscreen-image-thumb" style="width:100%; height:100%; object-fit:cover;">
+                                    </div>
+                                    <button id="btn-endscreen-image-clear" class="btn-full danger hidden" style="padding:2px; font-size:9px;">✕ Remove Image</button>
+                                </div>
+                            </div>
+                            <div class="prop-row" style="align-items:flex-start;">
+                                <span class="prop-label">Video</span>
+                                <div style="flex:1; display:flex; flex-direction:column; gap:4px;">
+                                    <button class="btn-full" id="btn-endscreen-video" style="padding:4px; font-size:10px;">🎬 Upload Video</button>
+                                    <div id="endscreen-video-filename" style="font-size:9px; color:#aaa; font-style:italic;">(None)</div>
+                                    <button id="btn-endscreen-video-clear" class="btn-full danger hidden" style="padding:2px; font-size:9px;">✕ Remove Video</button>
+                                </div>
+                            </div>
+                            <div class="prop-row">
+                                <span class="prop-label">Aspect Ratio</span>
+                                <select id="endscreen-video-aspect" class="prop-input">
+                                    <option value="cover">Original (Fill)</option>
+                                    <option value="contain">1:1 / Contain</option>
+                                    <option value="16/9">16:9 Widescreen</option>
+                                    <option value="vertical">Vertical (9:16)</option>
+                                    <option value="horizontal">Horizontal (Fill)</option>
+                                </select>
+                            </div>
+                            <div class="prop-row"><span class="prop-label">BGM Fine</span>
+                                <div style="flex:1; display:flex; flex-direction:column; gap:4px;">
+                                    <button class="btn-full" id="btn-endscreen-music" style="padding:4px; font-size:10px;">🎵 Choose Audio</button>
+                                    <div id="endscreen-music-filename" style="font-size:9px; color:#aaa; font-style:italic;">(None)</div>
+                                    <button id="btn-endscreen-music-clear" class="btn-full danger hidden" style="padding:2px; font-size:9px;">✕ Remove Audio</button>
+                                </div>
+                            </div>
                         </div>
 
                         <!-- Properties Panel for Collision -->
@@ -748,6 +937,32 @@
                             <div class="prop-row"><span class="prop-label">One Shot</span><input id="col-oneshot"
                                     type="checkbox" style="margin:0;"></div>
                         </div>
+
+                        <!-- SPLAT ENV SECTION -->
+                        <div id="section-splatenv" class="hidden">
+                            <div style="font-weight:bold; margin-bottom:10px; color:#8844ff;">🌌 Splat ENV Settings
+                            </div>
+
+                            <!-- File load row -->
+                            <div
+                                style="margin-bottom:10px; border:1px solid #3a2266; border-radius:6px; padding:8px; background:rgba(136,68,255,0.07);">
+                                <button class="btn-full" id="btn-se-load"
+                                    style="margin-bottom:6px; border-color:#8844ff; color:#8844ff;">📂 Carica file
+                                    SPLAT</button>
+                                <div style="display:flex; align-items:center; gap:5px;">
+                                    <span style="font-size:10px; color:#888;">File:</span>
+                                    <span id="se-filename"
+                                        style="flex:1; font-size:10px; color:#8844ff; overflow:hidden; text-overflow:ellipsis; white-space:nowrap;">(Nessuno)</span>
+                                </div>
+                            </div>
+
+                            <!-- Collision toggle -->
+                            <div class="prop-row">
+                                <span class="prop-label">Attiva Collisioni</span>
+                                <input id="se-collision" type="checkbox" style="margin:0;"
+                                    title="Abilita collisioni fisiche con questo splat">
+                            </div>
+                        </div>
                     </div>
                 </div>
             </aside>
@@ -767,6 +982,11 @@
                 <div class="asset-menu-item" data-type="Player" style="color:var(--player-color); font-weight:bold;">👤
                     Aggiungi Player</div>
                 <div class="asset-menu-item" data-type="load">📂 Carica ASSET (GLB)</div>
+                <div class="asset-menu-item" data-type="SplatEnv" style="color:#8844ff; font-weight:bold;">🌌 Carica SPLAT ENV</div>
+                <div class="asset-menu-item" data-type="PointLight" style="color:#ffff00;">💡 Aggiungi PointLight</div>
+                <div class="asset-menu-item" data-type="SpotLight" style="color:#ffffaa;">🔦 Aggiungi SpotLight</div>
+                <div class="asset-menu-item" data-type="DirectionalLight" style="color:#ffffff;">☀️ Aggiungi
+                    DirectionalLight</div>
                 <div class="asset-menu-item" data-type="Enemy">👿 Aggiungi Nemico</div>
                 <div class="asset-menu-item" data-type="Bonus">⭐ Aggiungi Bonus</div>
                 <div class="asset-menu-item" data-type="Boss">👹 Aggiungi Boss</div>

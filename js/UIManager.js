@@ -19,6 +19,7 @@ export class UIManager {
         this.setupResizers();
         this.setupAssetManager();
         this.setupEquipPreview();
+        this.setupLevelManager();
     }
 
     rebuildLibrary() {
@@ -88,6 +89,20 @@ export class UIManager {
                         }
                     };
                     input.click();
+                } else if (type === 'SplatEnv') {
+                    const splatInput = document.getElementById('splat-input');
+                    splatInput.onchange = (ev) => {
+                        const file = ev.target.files[0];
+                        if (file) {
+                            const reader = new FileReader();
+                            reader.onload = (f) => {
+                                this.createAssetCard(file.name, 'SplatEnv', f.target.result, true);
+                            };
+                            reader.readAsDataURL(file);
+                        }
+                        splatInput.value = '';
+                    };
+                    splatInput.click();
                 } else this.createAssetCard(type, type, null, true);
             };
         });
@@ -112,7 +127,18 @@ export class UIManager {
                 }
             }
 
-            if (type) this.app.editor.spawnAsset(type, data, e.clientX, e.clientY, defaultAnim);
+            let resolvedData = data;
+            if (type === 'SplatEnv') {
+                const libItem = this.library.find(i => i.name === name && i.type === 'SplatEnv');
+                if (libItem && libItem.data) {
+                    resolvedData = libItem.data;
+                }
+            } else if (!resolvedData) {
+                const libItem = this.library.find(i => i.name === name && i.type === type);
+                if (libItem && libItem.data) resolvedData = libItem.data;
+            }
+
+            if (type) this.app.editor.spawnAsset(type, resolvedData, e.clientX, e.clientY, defaultAnim, name);
         });
     }
 
@@ -137,6 +163,10 @@ export class UIManager {
         if (type === 'PowerUp') color = '#00cccc', icon = '⚡';
         if (type === 'Collision') color = '#22ff22', icon = '🚧';
         if (type === 'Model') color = '#2f5d8e', icon = '🧊';
+        if (type === 'PointLight') color = '#ffff00', icon = '💡';
+        if (type === 'SpotLight') color = '#ffffaa', icon = '🔦';
+        if (type === 'DirectionalLight') color = '#ffffff', icon = '☀️';
+        if (type === 'SplatEnv') color = '#8844ff', icon = '🌌';
 
         card.style.borderColor = color;
         const thumbId = `thumb-${Math.floor(Math.random() * 1000000)}`;
@@ -146,7 +176,7 @@ export class UIManager {
             <div class="asset-label" style="color:${color}">${name}</div>
         `;
 
-        if (data) {
+        if (data && type !== 'SplatEnv') {
             new GLTFLoader().load(data, (gltf) => {
                 const iconDiv = card.querySelector('.asset-icon');
                 // Ensure iconDiv still exists (card might be removed)
@@ -161,7 +191,7 @@ export class UIManager {
         card.addEventListener('dragstart', (e) => {
             e.dataTransfer.setData('asset-type', type);
             e.dataTransfer.setData('asset-name', name);
-            if (data) e.dataTransfer.setData('asset-data', data);
+            if (data && type !== 'SplatEnv') e.dataTransfer.setData('asset-data', data);
             if (defaultAnim) e.dataTransfer.setData('asset-default-anim', defaultAnim);
         });
         content.appendChild(card);
@@ -218,7 +248,7 @@ export class UIManager {
                 if (e.key === ' ' || e.code === 'Space') e.preventDefault();
                 if (e.key === 'Escape') {
                     this.app.game.stop();
-                    const btnPlay = document.getElementById('btn-play');
+                const btnPlay = document.getElementById('btn-play');
                     if (btnPlay) btnPlay.classList.remove('play-active');
                 }
                 return;
@@ -227,13 +257,23 @@ export class UIManager {
         });
 
         const btnPlay = document.getElementById('btn-play');
-        btnPlay.onclick = (e) => {
+        btnPlay.onclick = async (e) => {
             e.currentTarget.blur();
             if (this.app.game.isPlaying) {
                 this.app.game.stop();
                 btnPlay.classList.remove('play-active');
             } else {
-                this.app.game.start();
+                // Load designated starting level then start
+                const startIdx = this.app.editor.startingLevelIndex;
+                const currentIdx = this.app.editor.currentLevelIndex;
+
+                // If playing the current active level, update the slot first
+                if (startIdx === currentIdx && currentIdx >= 0) {
+                    this.app.editor.updateLevel(currentIdx);
+                }
+
+                await this.app.editor.loadLevelByIndex(startIdx);
+                this.app.game.start(startIdx);
                 btnPlay.classList.add('play-active');
             }
         };
@@ -257,7 +297,6 @@ export class UIManager {
             if (file) {
                 const reader = new FileReader();
                 reader.onload = (ev) => {
-                    const dataUrl = ev.target.result;
                     const container = document.getElementById('glb-preview-container'), nameInput = document.getElementById('glb-filename');
                     if (container) container.style.display = 'flex';
                     if (nameInput) nameInput.value = file.name;
@@ -298,6 +337,193 @@ export class UIManager {
                 this.rebuildLibrary();
             }
         };
+        
+        document.getElementById('game-title-input').onchange = (e) => {
+            this.app.editor.gameTitle = e.target.value;
+        };
+
+        document.getElementById('game-subtitle-input').onchange = (e) => {
+            this.app.editor.gameSplashSubtitle = e.target.value;
+        };
+
+        document.getElementById('game-splash-prompt-bg').onchange = (e) => {
+            this.app.editor.gameSplashPromptBg = e.target.value;
+        };
+
+        document.getElementById('game-splash-prompt-color').onchange = (e) => {
+            this.app.editor.gameSplashPromptColor = e.target.value;
+        };
+
+        const btnSplash = document.getElementById('btn-splash-import');
+        if (btnSplash) btnSplash.onclick = () => {
+            const input = document.createElement('input');
+            input.type = 'file'; input.accept = 'image/*';
+            input.onchange = (e) => {
+                const file = e.target.files[0];
+                if (file) {
+                    const reader = new FileReader();
+                    reader.onload = (ev) => {
+                        this.app.editor.gameSplashImage = ev.target.result;
+                        this.updateProperties(); // Refresh preview
+                    };
+                    reader.readAsDataURL(file);
+                }
+            };
+            input.click();
+        };
+
+        const btnSplashMusic = document.getElementById('btn-splash-music');
+        if (btnSplashMusic) btnSplashMusic.onclick = () => {
+            const input = document.createElement('input');
+            input.type = 'file'; input.accept = 'audio/*';
+            input.onchange = (e) => {
+                const file = e.target.files[0];
+                if (file) {
+                    const reader = new FileReader();
+                    reader.onload = (ev) => {
+                        this.app.editor.gameSplashMusic = ev.target.result;
+                        this.app.editor.gameSplashMusicFilename = file.name;
+                        this.updateProperties(); // Refresh UI
+                    };
+                    reader.readAsDataURL(file);
+                }
+            };
+            input.click();
+        };
+
+        const btnClearSplashMusic = document.getElementById('btn-splash-music-clear');
+        if (btnClearSplashMusic) btnClearSplashMusic.onclick = () => {
+            this.app.editor.gameSplashMusic = null;
+            this.app.editor.gameSplashMusicFilename = '';
+            this.updateProperties();
+        };
+
+        const btnClearSplash = document.getElementById('btn-splash-clear');
+        if (btnClearSplash) btnClearSplash.onclick = () => {
+            this.app.editor.gameSplashImage = null;
+            this.updateProperties();
+        };
+
+        // ── End Screen Config ────────────────────────────────────────────────
+        const btnConfigEnd = document.getElementById('btn-config-endscreen');
+        if (btnConfigEnd) btnConfigEnd.onclick = () => {
+            // Open Game Properties panel and scroll to End Screen section
+            const gamePropsBtn = document.getElementById('btn-game-props');
+            if (gamePropsBtn) gamePropsBtn.click();
+            setTimeout(() => {
+                const endTitle = document.getElementById('endscreen-title-input');
+                if (endTitle) endTitle.scrollIntoView({ behavior: 'smooth', block: 'center' });
+            }, 150);
+        };
+
+        const endTitleInput = document.getElementById('endscreen-title-input');
+        if (endTitleInput) endTitleInput.oninput = (e) => { this.app.editor.gameEndTitle = e.target.value; };
+
+        const endSubtitleInput = document.getElementById('endscreen-subtitle-input');
+        if (endSubtitleInput) endSubtitleInput.oninput = (e) => { this.app.editor.gameEndSubtitle = e.target.value; };
+
+        // End Screen Image
+        const btnEndImg = document.getElementById('btn-endscreen-image');
+        if (btnEndImg) btnEndImg.onclick = () => {
+            const input = document.createElement('input');
+            input.type = 'file'; input.accept = 'image/*';
+            input.onchange = (e) => {
+                const file = e.target.files[0]; if (!file) return;
+                const reader = new FileReader();
+                reader.onload = (ev) => {
+                    this.app.editor.gameEndImage = ev.target.result;
+                    this.app.editor.gameEndVideo = null;
+                    const preview = document.getElementById('endscreen-image-preview');
+                    const thumb = document.getElementById('endscreen-image-thumb');
+                    const clearBtn = document.getElementById('btn-endscreen-image-clear');
+                    const vidFilename = document.getElementById('endscreen-video-filename');
+                    const vidClear = document.getElementById('btn-endscreen-video-clear');
+                    if (thumb) thumb.src = ev.target.result;
+                    if (preview) preview.style.display = 'block';
+                    if (clearBtn) clearBtn.classList.remove('hidden');
+                    if (vidFilename) vidFilename.textContent = '(None)';
+                    if (vidClear) vidClear.classList.add('hidden');
+                };
+                reader.readAsDataURL(file);
+            };
+            input.click();
+        };
+        const btnEndImgClear = document.getElementById('btn-endscreen-image-clear');
+        if (btnEndImgClear) btnEndImgClear.onclick = () => {
+            this.app.editor.gameEndImage = null;
+            const preview = document.getElementById('endscreen-image-preview');
+            const thumb = document.getElementById('endscreen-image-thumb');
+            if (preview) preview.style.display = 'none';
+            if (thumb) thumb.src = '';
+            btnEndImgClear.classList.add('hidden');
+        };
+
+        // End Screen Video
+        const btnEndVid = document.getElementById('btn-endscreen-video');
+        if (btnEndVid) btnEndVid.onclick = () => {
+            const input = document.createElement('input');
+            input.type = 'file'; input.accept = 'video/*';
+            input.onchange = (e) => {
+                const file = e.target.files[0]; if (!file) return;
+                const reader = new FileReader();
+                reader.onload = (ev) => {
+                    this.app.editor.gameEndVideo = ev.target.result;
+                    this.app.editor.gameEndImage = null;
+                    const filenameEl = document.getElementById('endscreen-video-filename');
+                    const clearBtn = document.getElementById('btn-endscreen-video-clear');
+                    const preview = document.getElementById('endscreen-image-preview');
+                    if (filenameEl) filenameEl.textContent = file.name;
+                    if (clearBtn) clearBtn.classList.remove('hidden');
+                    if (preview) preview.style.display = 'none';
+                    const imgClear = document.getElementById('btn-endscreen-image-clear');
+                    if (imgClear) imgClear.classList.add('hidden');
+                };
+                reader.readAsDataURL(file);
+            };
+            input.click();
+        };
+        const btnEndVidClear = document.getElementById('btn-endscreen-video-clear');
+        if (btnEndVidClear) btnEndVidClear.onclick = () => {
+            this.app.editor.gameEndVideo = null;
+            const filenameEl = document.getElementById('endscreen-video-filename');
+            if (filenameEl) filenameEl.textContent = '(None)';
+            btnEndVidClear.classList.add('hidden');
+        };
+
+        // End Screen Video Aspect Ratio
+        const endVideoAspect = document.getElementById('endscreen-video-aspect');
+        if (endVideoAspect) endVideoAspect.onchange = (e) => {
+            this.app.editor.gameEndVideoAspect = e.target.value;
+        };
+
+        // End Screen Music
+        const btnEndMusic = document.getElementById('btn-endscreen-music');
+        if (btnEndMusic) btnEndMusic.onclick = () => {
+            const input = document.createElement('input');
+            input.type = 'file'; input.accept = 'audio/*';
+            input.onchange = (e) => {
+                const file = e.target.files[0]; if (!file) return;
+                const reader = new FileReader();
+                reader.onload = (ev) => {
+                    this.app.editor.gameEndMusic = ev.target.result;
+                    this.app.editor.gameEndMusicFilename = file.name;
+                    const filenameEl = document.getElementById('endscreen-music-filename');
+                    const clearBtn = document.getElementById('btn-endscreen-music-clear');
+                    if (filenameEl) filenameEl.textContent = file.name;
+                    if (clearBtn) clearBtn.classList.remove('hidden');
+                };
+                reader.readAsDataURL(file);
+            };
+            input.click();
+        };
+        const btnEndMusicClear = document.getElementById('btn-endscreen-music-clear');
+        if (btnEndMusicClear) btnEndMusicClear.onclick = () => {
+            this.app.editor.gameEndMusic = null;
+            this.app.editor.gameEndMusicFilename = '';
+            const filenameEl = document.getElementById('endscreen-music-filename');
+            if (filenameEl) filenameEl.textContent = '(None)';
+            btnEndMusicClear.classList.add('hidden');
+        };
 
         const axes = ['x', 'y', 'z'];
         axes.forEach(axis => {
@@ -329,7 +555,7 @@ export class UIManager {
                         defaults.push({ name: 'Walk Right', key: 'd', type: 'Walk', anim: '', mirror: false, active: true });
                         defaults.push({ name: 'Walk Left', key: 'a', type: 'Walk', anim: '', mirror: true, active: true });
                         defaults.push({ name: 'Jump', key: ' ', type: 'Jump', anim: '', mirror: false, active: true });
-                        defaults.push({ name: 'Shoot', key: 'f', type: 'Shooting', anim: '', mirror: false, active: true });
+                        defaults.push({ name: 'Shoot', key: 'mouse0', type: 'Shooting', anim: '', mirror: false, active: true });
                     } else if (newType === '8WAY') {
                         // 8WAY (Commando style)
                         defaults.push({ name: 'Walk Forward', key: 'w', type: 'Walk', anim: '', mirror: false, active: true });
@@ -337,7 +563,7 @@ export class UIManager {
                         defaults.push({ name: 'Walk Right', key: 'd', type: 'Walk', anim: '', mirror: false, active: true });
                         defaults.push({ name: 'Walk Left', key: 'a', type: 'Walk', anim: '', mirror: true, active: true });
                         defaults.push({ name: 'Jump', key: ' ', type: 'Jump', anim: '', mirror: false, active: true });
-                        defaults.push({ name: 'Shoot', key: 'f', type: 'Shooting', anim: '', mirror: false, active: true });
+                        defaults.push({ name: 'Shoot', key: 'mouse0', type: 'Shooting', anim: '', mirror: false, active: true });
                     } else {
                         // FPS/TPS
                         defaults.push({ name: 'Forward', key: 'w', type: 'Walk', anim: '', mirror: false, active: true });
@@ -345,7 +571,7 @@ export class UIManager {
                         defaults.push({ name: 'Left', key: 'a', type: 'Walk', anim: '', mirror: false, active: true });
                         defaults.push({ name: 'Right', key: 'd', type: 'Walk', anim: '', mirror: false, active: true });
                         defaults.push({ name: 'Jump', key: ' ', type: 'Jump', anim: '', mirror: false, active: true });
-                        defaults.push({ name: 'Shoot', key: 'f', type: 'Shooting', anim: '', mirror: false, active: true });
+                        defaults.push({ name: 'Shoot', key: 'mouse0', type: 'Shooting', anim: '', mirror: false, active: true });
                     }
                     player.userData.actions = defaults;
                 }
@@ -369,6 +595,14 @@ export class UIManager {
         const pDoubleJump = document.getElementById('p-doublejump');
         if (pDoubleJump) pDoubleJump.onchange = (e) => { if (this.app.editor.selected?.userData.isPlayer) this.app.editor.selected.userData.doubleJump = e.target.checked; };
 
+        // Sprint Settings Bindings
+        const pSprintEnable = document.getElementById('p-sprint-enable');
+        const pSprintKey = document.getElementById('p-sprint-key');
+        const pSprintMult = document.getElementById('p-sprint-mult');
+        if (pSprintEnable) pSprintEnable.onchange = (e) => { if (this.app.editor.selected?.userData.isPlayer) this.app.editor.selected.userData.canSprint = e.target.checked; };
+        if (pSprintKey) pSprintKey.onchange = (e) => { if (this.app.editor.selected?.userData.isPlayer) this.app.editor.selected.userData.sprintKey = e.target.value; };
+        if (pSprintMult) pSprintMult.oninput = (e) => { if (this.app.editor.selected?.userData.isPlayer) this.app.editor.selected.userData.sprintMult = parseFloat(e.target.value); };
+
         // Pixel Effect Bindings
         const gamePixelEffect = document.getElementById('game-pixel-effect');
         const gamePixelSize = document.getElementById('game-pixel-size');
@@ -382,6 +616,16 @@ export class UIManager {
                 }
             };
         }
+
+        // Render Engine Bindings
+        const gamePBR = document.getElementById('game-pbr');
+        if (gamePBR) gamePBR.onchange = (e) => this.app.sceneManager.setPBROutput(e.target.checked);
+
+        const gameShadows = document.getElementById('game-shadows');
+        if (gameShadows) gameShadows.onchange = (e) => this.app.sceneManager.setShadows(e.target.checked);
+
+        const gameReflections = document.getElementById('game-reflections');
+        if (gameReflections) gameReflections.onchange = (e) => this.app.sceneManager.setReflections(e.target.checked);
 
         if (pModelY && btnEditModel) {
             pModelY.oninput = (e) => {
@@ -489,6 +733,30 @@ export class UIManager {
                 if (model) model.position.y = parseFloat(e.target.value);
             };
         };
+
+        // SplatEnv
+        bindProp('se-collision', 'hasCollision', 'SplatEnv');
+        const btnSeLoad = document.getElementById('btn-se-load');
+        if (btnSeLoad) {
+            btnSeLoad.onclick = () => {
+                const splatInput = document.getElementById('splat-input');
+                splatInput.onchange = (ev) => {
+                    const file = ev.target.files[0];
+                    if (file && this.app.editor.selected?.userData.type === 'SplatEnv') {
+                        const reader = new FileReader();
+                        reader.onload = (f) => {
+                            this.app.editor.selected.userData.splatSource = f.target.result;
+                            this.app.editor.selected.userData.glbFilename = file.name;
+                            this.app.editor.reloadSplat(this.app.editor.selected);
+                            this.updateProperties();
+                        };
+                        reader.readAsDataURL(file);
+                    }
+                    splatInput.value = '';
+                };
+                splatInput.click();
+            };
+        }
 
         // Enemy
         bindProp('e-hp', 'hp', 'Enemy', parseInt);
@@ -680,9 +948,151 @@ export class UIManager {
         setupModelEdit('btn-edit-sp-modely', 'sp-modely');
 
         // Goal
+        bindProp('g-action-type', 'actionType', 'Goal');
+        bindProp('g-action-value', 'actionValue', 'Goal');
         bindProp('g-no-col', 'noCollision', 'Goal');
         setupLoader('btn-goal-import', 'Goal', 'g');
         setupModelEdit('btn-edit-g-modely', 'g-modely');
+
+        // LIGHT BINDINGS
+        const lColor = document.getElementById('l-color');
+        if (lColor) lColor.oninput = (e) => {
+            const sel = this.app.editor.selected;
+            if (sel && sel.userData.isAsset && ['PointLight', 'SpotLight', 'DirectionalLight'].includes(sel.userData.type)) {
+                const hexStr = e.target.value.replace('#', '');
+                const hex = parseInt(hexStr, 16);
+                sel.userData.color = hex;
+                sel.material.color.setHex(hex);
+                const lightSource = sel.getObjectByName('light_source');
+                if (lightSource) lightSource.color.setHex(hex);
+            }
+        };
+
+        const lIntensity = document.getElementById('l-intensity');
+        if (lIntensity) lIntensity.oninput = (e) => {
+            const sel = this.app.editor.selected;
+            if (sel && sel.userData.isAsset && ['PointLight', 'SpotLight', 'DirectionalLight'].includes(sel.userData.type)) {
+                const val = parseFloat(e.target.value);
+                sel.userData.intensity = val;
+                const lightSource = sel.getObjectByName('light_source');
+                if (lightSource) lightSource.intensity = val;
+            }
+        };
+
+        const lDistance = document.getElementById('l-distance');
+        if (lDistance) lDistance.oninput = (e) => {
+            const sel = this.app.editor.selected;
+            if (sel && sel.userData.isAsset && ['PointLight', 'SpotLight'].includes(sel.userData.type)) {
+                const val = parseFloat(e.target.value);
+                sel.userData.distance = val;
+                const lightSource = sel.getObjectByName('light_source');
+                if (lightSource) lightSource.distance = val;
+            }
+        };
+
+        const lAngle = document.getElementById('l-angle');
+        if (lAngle) lAngle.oninput = (e) => {
+            const sel = this.app.editor.selected;
+            if (sel && sel.userData.isAsset && sel.userData.type === 'SpotLight') {
+                const val = parseFloat(e.target.value);
+                const rad = THREE.MathUtils.degToRad(val);
+                sel.userData.angle = rad;
+                const lightSource = sel.getObjectByName('light_source');
+                if (lightSource) lightSource.angle = rad;
+            }
+        };
+
+        const lPenumbra = document.getElementById('l-penumbra');
+        if (lPenumbra) lPenumbra.oninput = (e) => {
+            const sel = this.app.editor.selected;
+            if (sel && sel.userData.isAsset && sel.userData.type === 'SpotLight') {
+                const val = parseFloat(e.target.value);
+                sel.userData.penumbra = val;
+                const lightSource = sel.getObjectByName('light_source');
+                if (lightSource) lightSource.penumbra = val;
+            }
+        };
+
+        const lDecay = document.getElementById('l-decay');
+        if (lDecay) lDecay.oninput = (e) => {
+            const sel = this.app.editor.selected;
+            if (sel && sel.userData.isAsset && ['PointLight', 'SpotLight'].includes(sel.userData.type)) {
+                const val = parseFloat(e.target.value);
+                sel.userData.decay = val;
+                const lightSource = sel.getObjectByName('light_source');
+                if (lightSource) lightSource.decay = val;
+            }
+        };
+
+        const lCastShadow = document.getElementById('l-cast-shadow');
+        if (lCastShadow) lCastShadow.onchange = (e) => {
+            const sel = this.app.editor.selected;
+            if (sel && sel.userData.isAsset && ['PointLight', 'SpotLight', 'DirectionalLight'].includes(sel.userData.type)) {
+                const val = e.target.checked;
+                sel.userData.castShadow = val;
+                const lightSource = sel.getObjectByName('light_source');
+                if (lightSource) lightSource.castShadow = val && this.app.sceneManager.renderer.shadowMap.enabled;
+            }
+        };
+
+        const updateShadowProp = (prop, parser, applyFn) => {
+            const el = document.getElementById(`l-shadow-${prop}`);
+            if (el) el.oninput = (e) => {
+                const sel = this.app.editor.selected;
+                if (sel && sel.userData.isAsset && ['PointLight', 'SpotLight', 'DirectionalLight'].includes(sel.userData.type)) {
+                    const val = parser(e.target.value);
+                    sel.userData[`shadow${prop.charAt(0).toUpperCase() + prop.slice(1)}`] = val;
+                    const lightSource = sel.getObjectByName('light_source');
+                    if (lightSource && lightSource.shadow) applyFn(lightSource.shadow, val);
+                }
+            };
+        };
+
+        updateShadowProp('bias', parseFloat, (s, v) => s.bias = v);
+        updateShadowProp('normalBias', parseFloat, (s, v) => s.normalBias = v);
+        updateShadowProp('radius', parseFloat, (s, v) => s.radius = v);
+
+        const elRes = document.getElementById('l-shadow-res');
+        if (elRes) elRes.onchange = (e) => {
+            const sel = this.app.editor.selected;
+            if (sel && sel.userData.isAsset && ['PointLight', 'SpotLight', 'DirectionalLight'].includes(sel.userData.type)) {
+                const val = parseInt(e.target.value);
+                sel.userData.shadowRes = val;
+                const lightSource = sel.getObjectByName('light_source');
+                if (lightSource && lightSource.shadow) {
+                    lightSource.shadow.mapSize.width = val;
+                    lightSource.shadow.mapSize.height = val;
+                    if (lightSource.shadow.map) {
+                        lightSource.shadow.map.dispose();
+                        lightSource.shadow.map = null;
+                    }
+                }
+            }
+        };
+
+        const updateCamProp = (prop, parser, applyFn) => {
+            const el = document.getElementById(`l-shadow-${prop}`);
+            if (el) el.oninput = (e) => {
+                const sel = this.app.editor.selected;
+                if (sel && sel.userData.isAsset && ['PointLight', 'SpotLight', 'DirectionalLight'].includes(sel.userData.type)) {
+                    const val = parser(e.target.value);
+                    sel.userData[`shadowCam${prop.charAt(0).toUpperCase() + prop.slice(1)}`] = val;
+                    const lightSource = sel.getObjectByName('light_source');
+                    if (lightSource && lightSource.shadow && lightSource.shadow.camera) {
+                        applyFn(lightSource.shadow.camera, val);
+                        lightSource.shadow.camera.updateProjectionMatrix();
+                    }
+                }
+            };
+        };
+
+        updateCamProp('near', parseFloat, (c, v) => c.near = v);
+        updateCamProp('far', parseFloat, (c, v) => c.far = v);
+        updateCamProp('size', parseFloat, (c, v) => {
+            if (c.isOrthographicCamera) {
+                c.left = -v; c.right = v; c.top = v; c.bottom = -v;
+            }
+        });
 
         // Catcher
         bindProp('c-filter-type', 'filterType', 'catcher_base');
@@ -781,6 +1191,10 @@ export class UIManager {
             else if (o.userData.type === 'PowerUp') icon = '⚡';
             else if (o.userData.type === 'Goal') icon = '🏆';
             else if (o.userData.type === 'Spawn') icon = '🏁';
+            else if (o.userData.type === 'PointLight') icon = '💡';
+            else if (o.userData.type === 'SpotLight') icon = '🔦';
+            else if (o.userData.type === 'DirectionalLight') icon = '☀️';
+            else if (o.userData.type === 'SplatEnv') icon = '🌌';
 
             li.innerText = `${icon} ${o.name}`;
             li.onclick = () => this.app.editor.select(o); list.appendChild(li);
@@ -790,12 +1204,51 @@ export class UIManager {
     updateProperties() {
         const selected = this.app.editor.selected;
         // Hide all first
-        ['section-transform', 'section-player', 'section-camera', 'section-enemy', 'section-bonus', 'section-boss', 'section-powerup', 'section-spawn', 'section-goal', 'section-catcher', 'section-collision', 'section-model'].forEach(id => {
+        ['section-transform', 'section-player', 'section-camera', 'section-enemy', 'section-bonus', 'section-boss', 'section-powerup', 'section-spawn', 'section-goal', 'section-catcher', 'section-collision', 'section-model', 'section-splatenv'].forEach(id => {
             const el = document.getElementById(id); if (el) el.classList.add('hidden');
         });
         document.getElementById('section-game').classList.add('hidden');
 
-        if (!selected) return;
+        if (!selected) {
+            // Show Game Settings if nothing selected
+            document.getElementById('section-game').classList.remove('hidden');
+            document.getElementById('game-title-input').value = this.app.editor.gameTitle || 'Web 3D Game';
+            document.getElementById('game-subtitle-input').value = this.app.editor.gameSplashSubtitle || '3D Editor Engine';
+            document.getElementById('game-splash-prompt-bg').value = this.app.editor.gameSplashPromptBg || 'rgba(255,255,255,0.1)';
+            document.getElementById('game-splash-prompt-color').value = this.app.editor.gameSplashPromptColor || '#ffffff';
+            
+            const musicNameEl = document.getElementById('splash-music-filename');
+            const btnClearMusic = document.getElementById('btn-splash-music-clear');
+            if (musicNameEl) musicNameEl.textContent = this.app.editor.gameSplashMusicFilename || '(None)';
+            if (btnClearMusic) {
+                if (this.app.editor.gameSplashMusic) btnClearMusic.classList.remove('hidden');
+                else btnClearMusic.classList.add('hidden');
+            }
+
+            const preview = document.getElementById('splash-preview-container');
+            const img = document.getElementById('splash-preview-img');
+            const btnClear = document.getElementById('btn-splash-clear');
+            if (this.app.editor.gameSplashImage) {
+                if (preview) preview.style.display = 'block';
+                if (img) img.src = this.app.editor.gameSplashImage;
+                if (btnClear) btnClear.classList.remove('hidden');
+            } else {
+                if (preview) preview.style.display = 'none';
+                if (btnClear) btnClear.classList.add('hidden');
+            }
+            // End Screen config restore
+            const endTitleInp = document.getElementById('endscreen-title-input');
+            if (endTitleInp) endTitleInp.value = this.app.editor.gameEndTitle || '';
+            const endSubInp = document.getElementById('endscreen-subtitle-input');
+            if (endSubInp) endSubInp.value = this.app.editor.gameEndSubtitle || '';
+            const endAspectSel = document.getElementById('endscreen-video-aspect');
+            if (endAspectSel) endAspectSel.value = this.app.editor.gameEndVideoAspect || 'cover';
+            const endVidFilename = document.getElementById('endscreen-video-filename');
+            if (endVidFilename) endVidFilename.textContent = this.app.editor.gameEndVideo ? '✅ Video caricato' : '(None)';
+            const endVidClear = document.getElementById('btn-endscreen-video-clear');
+            if (endVidClear) endVidClear.classList.toggle('hidden', !this.app.editor.gameEndVideo);
+            return;
+        }
 
         document.getElementById('section-transform').classList.remove('hidden');
         document.getElementById('obj-name-input').value = selected.name;
@@ -813,11 +1266,18 @@ export class UIManager {
             // I MUST re-include Player update logic.
             const typology = selected.userData.typology || 'platform';
             document.getElementById('p-typology').value = typology;
-            document.getElementById('panel-platform').classList.toggle('hidden', typology !== 'platform' && typology !== '8WAY');
+            document.getElementById('panel-platform').classList.remove('hidden');
             document.getElementById('p-speed').value = selected.userData.speed || 0.4;
             document.getElementById('p-jump').value = (selected.userData.jumpForce || 12.0).toFixed(1);
             const dj = document.getElementById('p-doublejump');
             if (dj) dj.checked = !!selected.userData.doubleJump;
+
+            const spe = document.getElementById('p-sprint-enable');
+            const spk = document.getElementById('p-sprint-key');
+            const spm = document.getElementById('p-sprint-mult');
+            if (spe) spe.checked = !!selected.userData.canSprint;
+            if (spk) spk.value = selected.userData.sprintKey || 'shift';
+            if (spm) spm.value = selected.userData.sprintMult || 1.5;
 
             const params = selected.geometry?.parameters || {};
             document.getElementById('p-radius').value = params.radius || 0.5;
@@ -842,11 +1302,13 @@ export class UIManager {
             const type = selected.userData.type;
             let sectionId = `section-${type.toLowerCase()}`;
             if (type === 'catcher_base') sectionId = 'section-catcher';
+            if (['PointLight', 'SpotLight', 'DirectionalLight'].includes(type)) sectionId = 'section-light';
+            if (type === 'SplatEnv') sectionId = 'section-splatenv';
 
             const el = document.getElementById(sectionId);
             if (el) el.classList.remove('hidden');
 
-            const prefix = type === 'Enemy' ? 'e' : type === 'Bonus' ? 'b' : type === 'Boss' ? 'bs' : type === 'PowerUp' ? 'pu' : type === 'Spawn' ? 'sp' : type === 'Goal' ? 'g' : type === 'Collision' ? 'col' : (type === 'catcher_base' || type === 'Catcher') ? 'c' : type === 'Model' ? 'm' : '';
+            const prefix = type === 'Enemy' ? 'e' : type === 'Bonus' ? 'b' : type === 'Boss' ? 'bs' : type === 'PowerUp' ? 'pu' : type === 'Spawn' ? 'sp' : type === 'Goal' ? 'g' : type === 'Collision' ? 'col' : (type === 'catcher_base' || type === 'Catcher') ? 'c' : type === 'Model' ? 'm' : type === 'SplatEnv' ? 'se' : '';
 
             // Common GLB & Model Y Logic
             if (prefix) {
@@ -868,6 +1330,12 @@ export class UIManager {
                         const scale = document.getElementById('e-model-scale');
                         if (rotY) rotY.value = THREE.MathUtils.radToDeg(model.rotation.y).toFixed(0);
                         if (scale) scale.value = model.scale.x.toFixed(2);
+                    }
+                    if (type === 'Goal') {
+                        const actionType = document.getElementById('g-action-type');
+                        const actionValue = document.getElementById('g-action-value');
+                        if (actionType) actionType.value = selected.userData.actionType || 'next_level';
+                        if (actionValue) actionValue.value = selected.userData.actionValue || '';
                     }
                 } else if (container) {
                     container.style.display = 'none';
@@ -1084,7 +1552,8 @@ export class UIManager {
                 document.getElementById('sp-rate').value = selected.userData.spawnRate || 2000;
             }
             else if (type === 'Goal') {
-                document.getElementById('g-no-col').checked = !!selected.userData.noCollision;
+                const noCol = document.getElementById('g-no-col');
+                if (noCol) noCol.checked = !!selected.userData.noCollision;
             }
             else if (type === 'catcher_base' || type === 'Catcher') {
                 document.getElementById('c-filter-type').value = selected.userData.filterType || 'all';
@@ -1092,6 +1561,54 @@ export class UIManager {
                 document.getElementById('c-move-type').value = selected.userData.moveType || 'teleport';
                 const keyInput = document.getElementById('c-key');
                 if (keyInput) keyInput.value = selected.userData.keyTrigger || '';
+            }
+            else if (['PointLight', 'SpotLight', 'DirectionalLight'].includes(type)) {
+                const colorHex = selected.userData.color !== undefined ? selected.userData.color.toString(16).padStart(6, '0') : 'ffffff';
+                document.getElementById('l-color').value = '#' + colorHex;
+                document.getElementById('l-intensity').value = selected.userData.intensity !== undefined ? selected.userData.intensity : 1.0;
+
+                const panelDist = document.getElementById('panel-l-distance');
+                const panelAngle = document.getElementById('panel-l-angle');
+                const panelPen = document.getElementById('panel-l-penumbra');
+                const panelDecay = document.getElementById('panel-l-decay');
+                const panelShadowSize = document.getElementById('panel-l-shadow-size');
+
+                if (type === 'DirectionalLight') {
+                    if (panelDist) panelDist.classList.add('hidden');
+                    if (panelAngle) panelAngle.classList.add('hidden');
+                    if (panelPen) panelPen.classList.add('hidden');
+                    if (panelDecay) panelDecay.classList.add('hidden');
+                    if (panelShadowSize) panelShadowSize.classList.remove('hidden');
+                } else if (type === 'PointLight') {
+                    if (panelDist) panelDist.classList.remove('hidden');
+                    if (panelAngle) panelAngle.classList.add('hidden');
+                    if (panelPen) panelPen.classList.add('hidden');
+                    if (panelDecay) panelDecay.classList.remove('hidden');
+                    if (panelShadowSize) panelShadowSize.classList.add('hidden');
+                    document.getElementById('l-distance').value = selected.userData.distance !== undefined ? selected.userData.distance : 10;
+                    document.getElementById('l-decay').value = selected.userData.decay !== undefined ? selected.userData.decay : 2;
+                } else if (type === 'SpotLight') {
+                    if (panelDist) panelDist.classList.remove('hidden');
+                    if (panelAngle) panelAngle.classList.remove('hidden');
+                    if (panelPen) panelPen.classList.remove('hidden');
+                    if (panelDecay) panelDecay.classList.remove('hidden');
+                    if (panelShadowSize) panelShadowSize.classList.add('hidden');
+                    document.getElementById('l-distance').value = selected.userData.distance !== undefined ? selected.userData.distance : 10;
+                    document.getElementById('l-angle').value = selected.userData.angle !== undefined ? Math.round(THREE.MathUtils.radToDeg(selected.userData.angle)) : 45;
+                    document.getElementById('l-penumbra').value = selected.userData.penumbra !== undefined ? selected.userData.penumbra : 0.5;
+                    document.getElementById('l-decay').value = selected.userData.decay !== undefined ? selected.userData.decay : 2;
+                }
+
+                document.getElementById('l-cast-shadow').checked = selected.userData.castShadow !== false;
+                document.getElementById('l-shadow-res').value = selected.userData.shadowRes || 1024;
+                document.getElementById('l-shadow-bias').value = selected.userData.shadowBias || 0;
+                document.getElementById('l-shadow-normal-bias').value = selected.userData.shadowNormalBias || 0;
+                document.getElementById('l-shadow-radius').value = selected.userData.shadowRadius || 1;
+                document.getElementById('l-shadow-near').value = selected.userData.shadowCamNear || 0.5;
+                document.getElementById('l-shadow-far').value = selected.userData.shadowCamFar || 500;
+                if (type === 'DirectionalLight') {
+                    document.getElementById('l-shadow-size').value = selected.userData.shadowCamSize || 10;
+                }
             }
         }
     }
@@ -1136,17 +1653,53 @@ export class UIManager {
             item.draggable = true; item.dataset.idx = index;
             const animOptions = ['<option value="">No Anim</option>', ...anims.map(a => `<option value="${a}" ${a === action.anim ? 'selected' : ''}>${a}</option>`)].join('');
             const typeOptions = this.actionTypes.map(t => `<option value="${t}" ${t === action.type ? 'selected' : ''}>${t}</option>`).join('');
+            const sfxFilename = action.sfxFilename || '';
             item.innerHTML = `
                 <div class="action-header"><span style="font-size:12px; cursor:grab;">☰</span><input type="text" class="action-key-input" style="flex:1; margin:0 5px; font-weight:bold; color:#eb7b33;" value="${action.name || 'Action'}" data-idx="${index}" data-field="name"><div style="display:flex; align-items:center; gap:5px;"><input type="checkbox" class="action-checkbox" ${action.active !== false ? 'checked' : ''} data-idx="${index}" data-field="active"><button class="btn-icon-small" data-idx="${index}">🗑️</button></div></div>
-                <div class="action-row-inputs"><input type="text" class="action-key-input" placeholder="Key" value="${action.key}" data-idx="${index}" data-field="key"><select class="action-select" data-idx="${index}" data-field="type">${typeOptions}</select><select class="action-select" data-idx="${index}" data-field="anim">${animOptions}</select><input type="checkbox" class="action-checkbox" ${action.mirror ? 'checked' : ''} data-idx="${index}" data-field="mirror"></div>`;
+                <div class="action-row-inputs"><input type="text" class="action-key-input" placeholder="Key" value="${action.key}" data-idx="${index}" data-field="key"><select class="action-select" data-idx="${index}" data-field="type">${typeOptions}</select><select class="action-select" data-idx="${index}" data-field="anim">${animOptions}</select><input type="checkbox" class="action-checkbox" ${action.mirror ? 'checked' : ''} data-idx="${index}" data-field="mirror"></div>
+                <div style="display:flex; align-items:center; gap:5px; margin-top:4px;">
+                    <span style="font-size:10px; color:#888; flex-shrink:0;">🔊 SFX:</span>
+                    <span class="action-sfx-name" data-idx="${index}" style="flex:1; font-size:10px; color:#eb7b33; overflow:hidden; text-overflow:ellipsis; white-space:nowrap;">${sfxFilename || '(none)'}</span>
+                    <button class="level-btn-sm action-sfx-btn" data-idx="${index}">📁</button>
+                    <button class="level-btn-sm danger action-sfx-clear" data-idx="${index}" style="padding:2px 4px;">✕</button>
+                </div>`;
             item.addEventListener('dragstart', (e) => { e.dataTransfer.setData('text/plain', index); item.classList.add('dragging'); });
             item.addEventListener('dragend', () => item.classList.remove('dragging'));
             item.addEventListener('dragover', (e) => { e.preventDefault(); const draggingItem = container.querySelector('.dragging'); if (draggingItem !== item) { const rect = item.getBoundingClientRect(); if (e.clientY - rect.top - rect.height / 2 < 0) container.insertBefore(draggingItem, item); else container.insertBefore(draggingItem, item.nextSibling); } });
             item.addEventListener('drop', (e) => { e.preventDefault(); const newOrder = Array.from(container.children).map(child => parseInt(child.dataset.idx)); playerObj.userData.actions = newOrder.map(i => actions[i]); this.renderActionList(playerObj); });
             container.appendChild(item);
         });
-        container.querySelectorAll('.btn-icon-small').forEach(b => b.onclick = () => this.removeAction(playerObj, parseInt(b.dataset.idx)));
-        container.querySelectorAll('input, select').forEach(el => { el.onchange = (e) => { const idx = parseInt(e.target.dataset.idx), field = e.target.dataset.field; playerObj.userData.actions[idx][field] = e.target.type === 'checkbox' ? e.target.checked : e.target.value; }; });
+        container.querySelectorAll('.btn-icon-small[data-field]').forEach(b => {});
+        container.querySelectorAll('.btn-icon-small:not([data-field])').forEach(b => b.onclick = () => this.removeAction(playerObj, parseInt(b.dataset.idx)));
+        container.querySelectorAll('input, select').forEach(el => { el.onchange = (e) => { const idx = parseInt(e.target.dataset.idx), field = e.target.dataset.field; if (field) playerObj.userData.actions[idx][field] = e.target.type === 'checkbox' ? e.target.checked : e.target.value; }; });
+
+        // SFX pickers
+        container.querySelectorAll('.action-sfx-btn').forEach(btn => {
+            btn.onclick = () => {
+                const idx = parseInt(btn.dataset.idx);
+                const input = document.createElement('input');
+                input.type = 'file'; input.accept = 'audio/*';
+                input.onchange = (ev) => {
+                    const file = ev.target.files[0]; if (!file) return;
+                    const reader = new FileReader();
+                    reader.onload = (f) => {
+                        playerObj.userData.actions[idx].sfx = f.target.result;
+                        playerObj.userData.actions[idx].sfxFilename = file.name;
+                        this.renderActionList(playerObj);
+                    };
+                    reader.readAsDataURL(file);
+                };
+                input.click();
+            };
+        });
+        container.querySelectorAll('.action-sfx-clear').forEach(btn => {
+            btn.onclick = () => {
+                const idx = parseInt(btn.dataset.idx);
+                delete playerObj.userData.actions[idx].sfx;
+                delete playerObj.userData.actions[idx].sfxFilename;
+                this.renderActionList(playerObj);
+            };
+        });
     }
 
     setFullScreen(enabled) {
@@ -1287,6 +1840,149 @@ export class UIManager {
                 document.getElementById('pu-rotx').value = THREE.MathUtils.radToDeg(currentPU.rotation.x).toFixed(0);
                 document.getElementById('pu-roty').value = THREE.MathUtils.radToDeg(currentPU.rotation.y).toFixed(0);
                 document.getElementById('pu-rotz').value = THREE.MathUtils.radToDeg(currentPU.rotation.z).toFixed(0);
+            }
+        });
+    }
+
+    // =================== LEVEL MANAGER ===================
+
+    setupLevelManager() {
+        const btnAdd = document.getElementById('btn-add-level');
+        if (btnAdd) {
+            btnAdd.onclick = () => {
+                const name = `Level ${this.app.editor.levels.length + 1}`;
+                this.app.editor.saveCurrentAsLevel(name);
+            };
+        }
+
+        // Import a JSON file as a new level
+        const btnImport = document.getElementById('btn-import-level-json');
+        if (btnImport) {
+            btnImport.onclick = () => {
+                const input = document.createElement('input');
+                input.type = 'file';
+                input.accept = '.json';
+                input.onchange = (e) => {
+                    const file = e.target.files[0];
+                    if (file) {
+                        this.app.editor.importLevelFromJSON(file);
+                        e.target.value = '';
+                    }
+                };
+                input.click();
+            };
+        }
+
+        this.renderLevelList();
+    }
+
+    renderLevelList() {
+        const container = document.getElementById('level-list');
+        if (!container) return;
+        container.innerHTML = '';
+        const levels = this.app.editor.levels;
+        if (!levels || levels.length === 0) {
+            container.innerHTML = '<div style="font-size:10px; color:#666; text-align:center; padding:8px;">Nessun livello — clicca ＋</div>';
+            return;
+        }
+        levels.forEach((level, index) => {
+            const isActive = index === this.app.editor.currentLevelIndex;
+            const isStarting = index === this.app.editor.startingLevelIndex;
+            const musicName = level.musicFilename || '';
+
+            const div = document.createElement('div');
+            div.className = 'level-list-item';
+            div.innerHTML = `
+                <span class="level-name ${isActive ? 'active-level' : ''}" title="Doppio click per rinominare — Index: ${index}">${index}: ${level.name}</span>
+                <button class="level-btn-sm lv-start" data-idx="${index}" title="Imposta come livello iniziale">${isStarting ? '⭐' : '☆'}</button>
+                <button class="level-btn-sm lv-play" data-idx="${index}" title="Testa questo livello">▶️</button>
+                <button class="level-btn-sm lv-load" data-idx="${index}" title="Carica nel editor (auto-salva il livello corrente)">📂</button>
+                <button class="level-btn-sm lv-update" data-idx="${index}" title="Aggiorna con scena corrente">💾</button>
+                <button class="level-btn-sm lv-music" data-idx="${index}" title="${musicName || 'Scegli musica BGM'}">🎵</button>
+                <button class="level-btn-sm danger lv-delete" data-idx="${index}" title="Cancella">🗑️</button>
+            `;
+
+            div.querySelector('.lv-start').onclick = () => {
+                this.app.editor.startingLevelIndex = index;
+                this.renderLevelList();
+            };
+
+            div.querySelector('.lv-play').onclick = async () => {
+                const btnPlayBtn = document.getElementById('btn-play');
+                
+                // If testing the current active level, update the slot first
+                if (index === this.app.editor.currentLevelIndex) {
+                    this.app.editor.updateLevel(index);
+                }
+
+                await this.app.editor.loadLevelByIndex(index);
+                if (btnPlayBtn) btnPlayBtn.classList.add('play-active');
+                this.app.game.start(index);
+            };
+
+            div.querySelector('.lv-load').onclick = async () => {
+                // Auto-save the current active level before switching
+                const curIdx = this.app.editor.currentLevelIndex;
+                if (curIdx >= 0 && curIdx < this.app.editor.levels.length) {
+                    this.app.editor.updateLevel(curIdx);
+                }
+                await this.app.editor.loadLevelByIndex(index);
+            };
+            div.querySelector('.lv-update').onclick = () => { this.app.editor.updateLevel(index); };
+            div.querySelector('.lv-music').onclick = () => {
+                const input = document.createElement('input');
+                input.type = 'file'; input.accept = 'audio/*';
+                input.onchange = (ev) => {
+                    const file = ev.target.files[0]; if (!file) return;
+                    const reader = new FileReader();
+                    reader.onload = (f) => {
+                        this.app.editor.levels[index].music = f.target.result;
+                        this.app.editor.levels[index].musicFilename = file.name;
+                        this.renderLevelList();
+                    };
+                    reader.readAsDataURL(file);
+                };
+                input.click();
+            };
+            div.querySelector('.lv-delete').onclick = () => {
+                if (confirm(`Cancellare "${level.name}"?`)) {
+                    this.app.editor.levels.splice(index, 1);
+                    if (this.app.editor.currentLevelIndex >= this.app.editor.levels.length) {
+                        this.app.editor.currentLevelIndex = -1;
+                    }
+                    this.renderLevelList();
+                }
+            };
+
+            // Double-click the name span to rename inline
+            const nameSpan = div.querySelector('.level-name');
+            nameSpan.ondblclick = () => {
+                const inp = document.createElement('input');
+                inp.type = 'text';
+                inp.value = level.name;
+                inp.style.cssText = 'flex:1; font-size:10px; background:#222; border:1px solid #5588cc; color:#fff; padding:1px 4px; border-radius:3px; min-width:0;';
+                nameSpan.replaceWith(inp);
+                inp.focus(); inp.select();
+                const commit = () => {
+                    const newName = inp.value.trim() || level.name;
+                    this.app.editor.levels[index].name = newName;
+                    this.renderLevelList();
+                };
+                inp.onblur = commit;
+                inp.onkeydown = (ev) => {
+                    if (ev.key === 'Enter') { ev.preventDefault(); inp.blur(); }
+                    if (ev.key === 'Escape') { inp.value = level.name; inp.blur(); }
+                };
+            };
+
+            container.appendChild(div);
+
+            if (musicName) {
+                const ml = document.createElement('div');
+                ml.style.cssText = 'font-size:9px; color:#888; padding:1px 7px 4px; overflow:hidden; text-overflow:ellipsis; white-space:nowrap;';
+                ml.title = musicName;
+                ml.textContent = '🎵 ' + musicName;
+                container.appendChild(ml);
             }
         });
     }

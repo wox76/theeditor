@@ -23,6 +23,12 @@ class App {
     loop() {
         requestAnimationFrame(() => this.loop());
         
+        if (this.game.isEndScreen) {
+            // End screen: video is an HTML element overlaid on the canvas.
+            // Skip ALL Three.js work so the GPU is free for video decoding.
+            return;
+        }
+
         if (this.game.isPlaying) {
             this.game.update();
         } else {

@@ -10,6 +10,9 @@ export class GameManager {
     constructor(app) {
         this.app = app;
         this.isPlaying = false;
+        this.isEndScreen = false;
+        this._endScreenDismissRegistered = false;
+        this.sessionId = 0; // Incremented each time a new game session starts
         this.player = null;
         this.mixer = null;
         this.actions = {};
@@ -63,25 +66,45 @@ export class GameManager {
             this.mouseRotation.y = Math.max(-Math.PI / 2.1, Math.min(Math.PI / 2.1, this.mouseRotation.y));
         };
 
-        this.onMouseDownLock = () => {
-            if (this.isPlaying && (this.gameCameraObj?.userData.type === 'TPS' || this.gameCameraObj?.userData.type === 'FPS')) {
+        this.onMouseDown = (e) => {
+            if (!this.isPlaying) return;
+            const key = 'mouse' + e.button;
+            this.keys.add(key);
+
+            if (this.gameCameraObj?.userData.type === 'TPS' || this.gameCameraObj?.userData.type === 'FPS') {
                 if (document.pointerLockElement !== this.app.sceneManager.renderer.domElement) {
-                    const promise = this.app.sceneManager.renderer.domElement.requestPointerLock();
-                    if (promise && promise.catch) promise.catch(() => { }); // Ignore exit errors
+                    try {
+                        const promise = this.app.sceneManager.renderer.domElement.requestPointerLock();
+                        if (promise && promise.catch) promise.catch(() => { }); // Ignore exit errors
+                    } catch (err) { }
                 }
             }
+        };
+        this.onMouseUp = (e) => {
+            const key = 'mouse' + e.button;
+            this.keys.delete(key);
         };
         this.lanternCooldownTimer = 0;
         this.flyTimer = null;
     }
 
-    start() {
+    start(index = -1) {
         if (this.isPlaying) return;
         this.isPlaying = true;
         this.firstFrame = true;
+        this.sessionId++; // New session — invalidates any stale async loadLevel() continuations
         this.score = 0; this.lives = 3;
         this.velocity.set(0, 0, 0);
         this.onGround = false;
+        this.invulnerabilityTimer = 0;
+
+        // ---- SPLASH SCREEN & LEVEL SETUP ----
+        let levelIndex = index;
+        if (levelIndex < 0) levelIndex = this.app.editor.currentLevelIndex;
+        // Final fallback to starting level if still nothing
+        if (levelIndex < 0 && this.app.editor.levels.length > 0) {
+            levelIndex = this.app.editor.startingLevelIndex;
+        }
 
         this.jumpCount = 0;
         this.lastMoveDir = 1; // 1 for right, -1 for left
@@ -117,8 +140,10 @@ export class GameManager {
             this.playStartStates.push({ uuid: o.uuid, p: o.position.clone() }); // Copy of start position
 
             // Compute BVH for static meshes (exclude player/helpers)
-            if (o.isMesh && !o.userData.isPlayer && !o.userData.isHelper && !o.userData.isCamera) {
-                if (!o.geometry.boundsTree) {
+            if (o.isMesh && !o.userData.isPlayer && !o.userData.isHelper && !o.userData.isCamera && o.userData.type !== 'SplatEnv') {
+                if (!o.geometry || !o.geometry.attributes.position) {
+                    console.warn(`Object ${o.name} has no position attributes, skipping BVH.`);
+                } else if (!o.geometry.boundsTree) {
                     o.geometry.computeBoundsTree();
                 }
             }
@@ -152,12 +177,16 @@ export class GameManager {
             if (arrow) arrow.visible = false;
 
             this.safeTraverse(o, child => {
-                if (child.isMesh && !child.userData.isPlayer && !child.userData.isHelper) {
-                    if (!child.geometry.boundsTree) {
+                if (child.isMesh && !child.userData.isPlayer && !child.userData.isHelper && o.userData.type !== 'SplatEnv') {
+                    if (child.geometry && child.geometry.attributes.position && !child.geometry.boundsTree) {
                         child.geometry.computeBoundsTree();
                     }
                 }
             });
+
+            // Reset runtime-only flags that must never persist from a previous session
+            if (o.userData.type === 'Goal') o.userData.triggered = false;
+            if (o.userData.type === 'Collision') o.userData.triggered = false;
         });
 
         // Hide Link Arrows
@@ -215,12 +244,17 @@ export class GameManager {
         window.addEventListener('keydown', this.onKeyDown);
         window.addEventListener('keyup', this.onKeyUp);
         window.addEventListener('mousemove', this.onMouseMove);
+        window.addEventListener('mousedown', this.onMouseDown);
+        window.addEventListener('mouseup', this.onMouseUp);
         window.addEventListener('blur', this.onBlur);
-        this.app.sceneManager.renderer.domElement.addEventListener('mousedown', this.onMouseDownLock);
 
         if (this.gameCameraObj?.userData.type === 'TPS' || this.gameCameraObj?.userData.type === 'FPS') {
-            const promise = this.app.sceneManager.renderer.domElement.requestPointerLock();
-            if (promise && promise.catch) promise.catch(() => { }); // Ignore exit errors
+            try {
+                const promise = this.app.sceneManager.renderer.domElement.requestPointerLock();
+                if (promise && promise.catch) promise.catch(() => { }); // Ignore exit errors
+            } catch (err) {
+                console.warn('[GameManager] requestPointerLock blocked without user gesture.');
+            }
 
             // Sync initial mouse rotation from Camera's editor position relative to player
             if (this.player && this.gameCameraObj) {
@@ -341,6 +375,65 @@ export class GameManager {
         });
 
         this.clock.start();
+
+        // ---- SPLASH SCREEN ----
+        // levelIndex is already defined at the top of start()
+        const levelData = (levelIndex >= 0) ? this.app.editor.levels[levelIndex] : null;
+        const splashEl = document.getElementById('game-splash');
+        const splashTitle = document.getElementById('splash-title');
+        const splashSubtitle = document.querySelector('#game-splash .splash-subtitle');
+        const splashLevelName = document.getElementById('splash-level-name');
+        const splashPrompt = document.querySelector('#game-splash .splash-prompt');
+
+        if (splashEl) {
+            if (splashTitle) splashTitle.textContent = this.app.editor.gameTitle || 'Web 3D Game';
+            if (splashSubtitle) splashSubtitle.textContent = this.app.editor.gameSplashSubtitle || '3D Editor Engine';
+            if (splashLevelName) splashLevelName.textContent = levelData ? levelData.name : '';
+            
+            if (splashPrompt) {
+                splashPrompt.style.backgroundColor = this.app.editor.gameSplashPromptBg || 'rgba(255,255,255,0.1)';
+                splashPrompt.style.color = this.app.editor.gameSplashPromptColor || '#ffffff';
+            }
+            
+            // Apply splash background image
+            if (this.app.editor.gameSplashImage) {
+                splashEl.style.backgroundImage = `url(${this.app.editor.gameSplashImage})`;
+            } else {
+                splashEl.style.backgroundImage = '';
+            }
+
+            splashEl.classList.remove('hidden', 'splash-fade-out');
+            this.splashActive = true;
+
+            // Start Splash Music
+            if (this.app.editor.gameSplashMusic) {
+                this.playSplashMusic(this.app.editor.gameSplashMusic);
+            }
+
+            const dismissSplash = (e) => {
+                if (!this.splashActive) return;
+                this.splashActive = false;
+                splashEl.classList.add('splash-fade-out');
+                setTimeout(() => splashEl.classList.add('hidden'), 420);
+                window.removeEventListener('keydown', dismissSplash);
+                window.removeEventListener('pointerdown', dismissSplash);
+
+                this.stopSplashMusic();
+
+                // Start Level BGM after splash dismissed
+                const bgm = levelData?.music;
+                if (bgm) this.playBGM(bgm);
+            };
+            // Delay so the keydown that triggered start() doesn't immediately dismiss
+            setTimeout(() => {
+                window.addEventListener('keydown', dismissSplash);
+                window.addEventListener('pointerdown', dismissSplash);
+            }, 300);
+        } else {
+            // No splash: start BGM immediately
+            const bgm = levelData?.music;
+            if (bgm) this.playBGM(bgm);
+        }
     }
 
     safeTraverse(obj, callback) {
@@ -384,6 +477,7 @@ export class GameManager {
                     skipGeometry = true;
                 }
             }
+            if (o.userData.type === 'SplatEnv') return;
 
             if (!skipGeometry && o.isMesh && o.geometry) {
                 if (!o.geometry.boundingBox) o.geometry.computeBoundingBox();
@@ -424,25 +518,32 @@ export class GameManager {
     }
 
     stop() {
-        if (!this.isPlaying) return;
+        if (!this.isPlaying && !this.isEndScreen) return;
+        this._stopInternal();
+    }
+
+    // Internal cleanup — works regardless of isPlaying / isEndScreen state
+    _stopInternal() {
         this.isPlaying = false;
+        this.isEndScreen = false;
+        this._endScreenDismissRegistered = false;
+
         if (this.flyTimer) clearTimeout(this.flyTimer);
         this.flyTimer = null;
         this.initialStates.forEach(state => {
             const obj = this.app.editor.objects.find(o => o.uuid === state.uuid);
             if (obj) {
                 obj.position.copy(state.p); obj.rotation.copy(state.r); obj.scale.copy(state.s); obj.visible = state.visible;
-                if (state.isAsset !== undefined) obj.userData.isAsset = state.isAsset; // Restore isAsset flag
+                if (state.isAsset !== undefined) obj.userData.isAsset = state.isAsset;
 
-                // Reset collection/trigger flags
                 if (obj.userData.type === 'Bonus') obj.userData.collected = false;
                 if (obj.userData.type === 'PowerUp') obj.userData.collected = false;
                 if (obj.userData.type === 'Collision') obj.userData.triggered = false;
+                if (obj.userData.type === 'Goal') obj.userData.triggered = false;
 
                 if (obj.userData.glbSource && obj.material) obj.material.visible = true;
                 if (obj.parent !== this.app.sceneManager.scene) this.app.sceneManager.scene.add(obj);
 
-                // Restore ArrowHelpers
                 const arrow = obj.getObjectByName('ArrowHelper');
                 if (arrow) arrow.visible = true;
             }
@@ -450,13 +551,13 @@ export class GameManager {
         window.removeEventListener('keydown', this.onKeyDown);
         window.removeEventListener('keyup', this.onKeyUp);
         window.removeEventListener('mousemove', this.onMouseMove);
+        window.removeEventListener('mousedown', this.onMouseDown);
+        window.removeEventListener('mouseup', this.onMouseUp);
         window.removeEventListener('blur', this.onBlur);
-        this.app.sceneManager.renderer.domElement.removeEventListener('mousedown', this.onMouseDownLock);
         document.exitPointerLock?.();
 
         if (this.mixer) { this.mixer.stopAllAction(); this.mixer = null; }
 
-        // Stop Enemy Mixers
         this.enemyMixers.forEach(m => m.stopAllAction());
         this.enemyMixers = [];
         this.bullets.forEach(b => { if (b.mesh.parent) b.mesh.parent.remove(b.mesh); });
@@ -482,6 +583,13 @@ export class GameManager {
 
         const hud = document.getElementById('game-hud');
         if (hud) hud.classList.add('hidden');
+
+        const splashEl = document.getElementById('game-splash');
+        if (splashEl) splashEl.classList.add('hidden');
+        this.splashActive = false;
+
+        this.stopBGM();
+        this.stopSplashMusic();
 
         this.app.ui.setFullScreen(false);
     }
@@ -700,12 +808,24 @@ export class GameManager {
             // In platform mode, direction is based on last move direction
             dir.set(this.lastMoveDir, 0, 0);
         } else {
-            // TPS/FPS/8WAY mode: use player forward
-            this.player.getWorldDirection(dir);
+            const camType = this.gameCameraObj?.userData.type;
+            if (camType === 'FPS') {
+                this.app.sceneManager.camera.getWorldDirection(dir);
+                spawnPos.add(dir.clone().multiplyScalar(0.5));
+            } else {
+                this.player.getWorldDirection(dir);
+                spawnPos.add(dir.clone().multiplyScalar(1.0));
+            }
         }
 
         const createMesh = (model) => {
             const mesh = model || new THREE.Mesh(new THREE.SphereGeometry(0.1), new THREE.MeshBasicMaterial({ color: 0xffff00 }));
+            
+            mesh.traverse(c => {
+                if (c.isMesh) {
+                    c.visible = true;
+                }
+            });
             mesh.position.copy(spawnPos);
             this.app.sceneManager.scene.add(mesh);
             this.bullets.push({
@@ -877,7 +997,7 @@ export class GameManager {
                     this.raycaster.set(origin, new THREE.Vector3(0, -1, 0));
 
                     const targets = this.app.sceneManager.scene.children.filter(c =>
-                        c !== o && c !== this.player && !c.userData.isHelper && !c.userData.isCamera
+                        c !== o && c !== this.player && !c.userData.isHelper && !c.userData.isCamera && c.userData.type !== 'SplatEnv'
                     );
 
                     const hits = this.raycaster.intersectObjects(targets, true);
@@ -1102,15 +1222,21 @@ export class GameManager {
             const oBox = this.getCollisionBox(o);
             let collided = pBox.intersectsBox(oBox);
 
-            // Special radius-based check for Bonus & PowerUp
-            if (o.userData.type === 'Bonus' || o.userData.type === 'PowerUp') {
-                const radius = o.userData.radius || 1.0;
+            // Special radius-based check for Bonus, PowerUp & Goal
+            if (o.userData.type === 'Bonus' || o.userData.type === 'PowerUp' || o.userData.type === 'Goal') {
+                const radius = o.userData.radius || (o.userData.type === 'Goal' ? 1.5 : 1.0);
                 const pWorld = new THREE.Vector3();
                 this.player.getWorldPosition(pWorld);
                 const oWorld = new THREE.Vector3();
                 o.getWorldPosition(oWorld);
-                const dist = pWorld.distanceTo(oWorld);
-                if (dist <= radius) collided = true;
+                // For Goal: use XZ-only distance (player walks ON it, Y doesn't matter much)
+                if (o.userData.type === 'Goal') {
+                    const dxz = Math.sqrt((pWorld.x - oWorld.x) ** 2 + (pWorld.z - oWorld.z) ** 2);
+                    if (dxz <= radius) collided = true;
+                } else {
+                    const dist = pWorld.distanceTo(oWorld);
+                    if (dist <= radius) collided = true;
+                }
             }
 
             if (collided) {
@@ -1127,14 +1253,9 @@ export class GameManager {
                         this.stop();
                         setTimeout(() => this.start(), 100);
                     } else if (action === 'load_level') {
-                        if (value) {
-                            this.stop();
-                            // Assuming App has a method to load level, or we use Editor's loadProject
-                            // We need to fetch the file first.
-                            fetch(value).then(res => res.blob()).then(blob => {
-                                const file = new File([blob], "level.json");
-                                this.app.editor.loadProject(file);
-                            }).catch(err => alert("Failed to load level: " + err));
+                        const levelIdx = parseInt(value);
+                        if (!isNaN(levelIdx)) {
+                            this.loadLevel(levelIdx);
                         }
                     } else if (action === 'alert') {
                         this.showMessage(value || "Triggered!");
@@ -1197,6 +1318,34 @@ export class GameManager {
                             }
                         });
                     }
+                } else if (o.userData.type === 'Goal') {
+                    // Guard: only trigger once per contact
+                    if (o.userData.triggered) return;
+                    o.userData.triggered = true;
+
+                    // Goal automatically loads the next level by default, but can be customized
+                    const action = o.userData.actionType || 'next_level';
+                    const value = o.userData.actionValue;
+
+                    if (action === 'next_level') {
+                        const currentIdx = this.app.editor.currentLevelIndex;
+                        const nextIdx = (currentIdx >= 0) ? currentIdx + 1 : 0;
+                        this.showMessage('🏆 GOAL! Caricamento livello successivo...', 2000);
+                        setTimeout(() => this.loadLevel(nextIdx), 1500);
+                    } else if (action === 'load_level') {
+                        const levelIdx = parseInt(value);
+                        if (!isNaN(levelIdx)) {
+                            this.showMessage(`🏆 GOAL! Caricamento livello ${levelIdx}...`, 2000);
+                            setTimeout(() => this.loadLevel(levelIdx), 1500);
+                        }
+                    } else if (action === 'restart') {
+                        this.showMessage('Level Restarting...', 2000);
+                        setTimeout(() => { this.stop(); setTimeout(() => this.start(), 100); }, 1500);
+                    } else if (action === 'alert') {
+                        this.showMessage(value || 'Goal Reached!');
+                        o.userData.triggered = false; // Allow re-trigger for alerts only
+                    }
+                    return; // Stop checking other collisions this frame
                 } else if (o.userData.type === 'PowerUp') {
                     if (o.userData.collected) return;
                     try {
@@ -1345,8 +1494,8 @@ export class GameManager {
                         }
                     }
                 } else if (o.userData.type === 'Goal') {
-                    this.showMessage("🏆 HAI VINTO! 🏆");
-                    this.stop();
+                    // Handled above with trigger guard — this branch should not be reached
+
                 } else if (o.userData.type === 'catcher_base' || o.userData.type === 'Catcher') {
                     const filter = o.userData.filterType || 'all';
                     if (filter === 'all' || filter === 'player') {
@@ -1457,7 +1606,13 @@ export class GameManager {
             // console.log("ActionLocked:", this.actionLocked);
         }
 
-        const speed = (u.speed || 5.0);
+        let speed = (u.speed || 5.0);
+        let isSprinting = false;
+        const sprintKey = u.sprintKey || 'shift';
+        if (u.canSprint && this.keys.has(sprintKey.toLowerCase())) {
+            speed *= (u.sprintMult !== undefined ? u.sprintMult : 1.5);
+            isSprinting = true;
+        }
         const jumpForce = (u.jumpForce || 15.0);
 
         // Initialize physics parameters at the very start
@@ -1641,7 +1796,7 @@ export class GameManager {
         // 2. Horizontal Blocking (Ray-based - enhanced with BVH implicitly via raycast)
         const obstacles = this.app.sceneManager.scene.children.filter(o =>
             o !== this.player && !o.userData.isHelper && !o.userData.isCamera &&
-            !o.userData.isTrigger && !o.userData.noCollision && // Exclude Triggers and NoCollision
+            !o.userData.isTrigger && !o.userData.noCollision && o.userData.type !== 'SplatEnv' && // Exclude Triggers, NoCollision and Splats
             o.userData.type !== 'Bonus' && o.userData.type !== 'Goal' && o.userData.type !== 'catcher_base' && o.userData.type !== 'catcher_target' && o.userData.type !== 'Catcher'
         );
 
@@ -1697,7 +1852,7 @@ export class GameManager {
         // Collide with EVERYTHING except player and specific triggers (and enemies for grounding)
         const allTargets = this.app.sceneManager.scene.children.filter(o =>
             o !== this.player && !o.userData.isHelper && !o.userData.isCamera &&
-            !o.userData.isTrigger && !o.userData.noCollision && // Exclude Triggers and NoCollision
+            !o.userData.isTrigger && !o.userData.noCollision && o.userData.type !== 'SplatEnv' && // Exclude Triggers, NoCollision and Splats
             o.userData.type !== 'Bonus' && o.userData.type !== 'Goal' && o.userData.type !== 'Enemy' && o.userData.type !== 'Boss' && o.userData.type !== 'catcher_base' && o.userData.type !== 'catcher_target' && o.userData.type !== 'Catcher'
         );
 
@@ -1775,6 +1930,13 @@ export class GameManager {
 
         if (finalAnim) {
             this.playAnim(finalAnim);
+            if (this.activeAction) {
+                if (isSprinting && (finalAnim === ((u.actions || []).find(a => (a.type === 'Walk' || a.type === 'Run') && a.active)?.anim))) {
+                    this.activeAction.setEffectiveTimeScale(u.sprintMult !== undefined ? u.sprintMult : 1.5);
+                } else {
+                    this.activeAction.setEffectiveTimeScale(1);
+                }
+            }
         } else if (this.activeAction) {
             this.activeAction.fadeOut(0.2);
             this.activeAction = null;
@@ -1787,7 +1949,13 @@ export class GameManager {
         if (this.activeAction !== action) {
             const prev = this.activeAction; this.activeAction = action;
             if (prev) { action.reset().enabled = true; action.crossFadeFrom(prev, 0.2, true); action.play(); }
-            else action.reset().play(); // Removed .fadeIn(0.2)
+            else action.reset().play();
+        }
+        // Trigger SFX for this action
+        const playerActions = this.player?.userData.actions || [];
+        const matchedAction = playerActions.find(a => a.anim === name && a.sfx);
+        if (matchedAction && matchedAction.sfx) {
+            this.playSFX(matchedAction.sfx);
         }
     }
 
@@ -1818,7 +1986,7 @@ export class GameManager {
             const dir = offset.clone().normalize();
             this.raycaster.set(targetPos, dir);
             const obstacles = this.app.sceneManager.scene.children.filter(o =>
-                o !== this.player && !o.userData.isHelper && !o.userData.isCamera && o.isMesh && o.visible && o.name !== 'Floor'
+                o !== this.player && !o.userData.isHelper && !o.userData.isCamera && o.isMesh && o.visible && o.name !== 'Floor' && o.userData.type !== 'SplatEnv'
             );
             const hits = this.raycaster.intersectObjects(obstacles, true);
 
@@ -1843,5 +2011,460 @@ export class GameManager {
             cam.position.copy(relativeOffset);
             cam.lookAt(this.player.position);
         }
+    }
+
+    // ======================== AUDIO ========================
+
+    playBGM(src) {
+        this.stopBGM();
+        if (!src) return;
+        this._bgmAudio = new Audio(src);
+        this._bgmAudio.loop = true;
+        this._bgmAudio.volume = 0.5;
+        this._bgmAudio.play().catch(() => {});
+    }
+
+    stopBGM() {
+        if (this._bgmAudio) {
+            this._bgmAudio.pause();
+            this._bgmAudio.src = '';
+            this._bgmAudio = null;
+        }
+    }
+
+    playSplashMusic(src) {
+        this.stopSplashMusic();
+        if (!src) return;
+        this._splashAudio = new Audio(src);
+        this._splashAudio.loop = true;
+        this._splashAudio.volume = 0.5;
+        this._splashAudio.play().catch(() => {});
+    }
+
+    stopSplashMusic() {
+        if (this._splashAudio) {
+            this._splashAudio.pause();
+            this._splashAudio.src = '';
+            this._splashAudio = null;
+        }
+    }
+
+    playSFX(src) {
+        if (!src) return;
+        const audio = new Audio(src);
+        audio.volume = 0.8;
+        audio.play().catch(() => {});
+    }
+
+    // ======================== LEVEL LOADING ========================
+
+    /**
+     * Hot-swap to a new level while staying in game mode.
+     * Does NOT show the title/splash screen, does NOT enter edit mode.
+     */
+    async loadLevel(index) {
+        if (index < 0 || index >= this.app.editor.levels.length) {
+            console.warn('[GameManager] loadLevel: index out of range', index);
+            if (index >= this.app.editor.levels.length && this.app.editor.levels.length > 0) {
+                this.showEndScreen();
+            }
+            return;
+        }
+
+        // Snapshot session at call time — if start() runs while we await, abort
+        const mySession = this.sessionId;
+
+        // ── 1. Mark as loading (still "playing" = no editor) ──────────────────
+        const wasPlaying = this.isPlaying;
+        this.isPlaying = false; // Pause game loop temporarily
+
+        // Stop current audio (BGM) and timers
+        this.stopBGM();
+        if (this.flyTimer) { clearTimeout(this.flyTimer); this.flyTimer = null; }
+
+        // Stop all mixers
+        if (this.mixer) { this.mixer.stopAllAction(); this.mixer = null; }
+        this.enemyMixers.forEach(m => m.stopAllAction());
+        this.enemyMixers = [];
+
+        // Clear bullets
+        this.bullets.forEach(b => { if (b.mesh.parent) b.mesh.parent.remove(b.mesh); });
+        this.bullets = [];
+
+        // Clear runtime data
+        this.enemyRuntimeData.clear();
+        this.bonusRuntimeData.clear();
+        this.translatingObjects = [];
+        this.actions = {};
+        this.activeAction = null;
+        this.keys.clear();
+
+        // ── 2. Quick "loading" overlay (no title/splash) ───────────────────────
+        const splashEl = document.getElementById('game-splash');
+        const splashTitle = document.getElementById('splash-title');
+        const splashSubtitle = document.querySelector('#game-splash .splash-subtitle');
+        const splashLevelName = document.getElementById('splash-level-name');
+        const splashPrompt = document.querySelector('#game-splash .splash-prompt');
+
+        const levelData = this.app.editor.levels[index];
+        if (splashEl) {
+            if (splashTitle) splashTitle.textContent = levelData?.name || `Livello ${index}`;
+            if (splashSubtitle) splashSubtitle.textContent = 'Caricamento...';
+            if (splashLevelName) splashLevelName.textContent = '';
+            if (splashPrompt) splashPrompt.style.display = 'none';
+            splashEl.classList.remove('hidden', 'splash-fade-out');
+            this.splashActive = true;
+        }
+
+        // ── 3. Load the new level data into the editor scene ──────────────────
+        await this.app.editor.loadLevelByIndex(index);
+
+        // *** SESSION CHECK: if dismiss() + start() ran while we were awaiting, abort ***
+        if (this.sessionId !== mySession) {
+            console.warn('[GameManager] loadLevel: session changed, aborting stale continuation');
+            return;
+        }
+
+        // ── 4. Re-initialize game state for the new scene ─────────────────────
+        this.isPlaying = true;
+        this.score = 0;
+        this.lives = 3;
+        this.velocity.set(0, 0, 0);
+        this.onGround = false;
+        this.invulnerabilityTimer = 0;
+        this.jumpCount = 0;
+        this.lastMoveDir = 1;
+        this.lanternCooldownTimer = 0;
+        this.actionLocked = false;
+        this.firstFrame = true;
+        this.initialStates = [];
+        this.playStartStates = [];
+
+        // BVH + material setup (same as start())
+        this.app.editor.objects.forEach(o => {
+            try { o.updateMatrixWorld(true); } catch (e) {}
+            const state = {
+                uuid: o.uuid,
+                p: o.position.clone(),
+                r: o.rotation.clone(),
+                s: o.scale.clone(),
+                visible: o.visible,
+                isAsset: o.userData.isAsset
+            };
+            this.initialStates.push(state);
+            this.playStartStates.push({ uuid: o.uuid, p: o.position.clone() });
+
+            if (o.isMesh && !o.userData.isPlayer && !o.userData.isHelper && !o.userData.isCamera) {
+                if (!o.geometry.boundsTree) o.geometry.computeBoundsTree();
+            }
+            if (o.userData.glbSource && o.material) {
+                if (o.userData.type === 'Enemy' || o.userData.type === 'Boss') {
+                    o.material.visible = true; o.material.wireframe = true;
+                    o.material.transparent = true; o.material.opacity = 0.5;
+                } else {
+                    o.material.visible = false;
+                }
+            }
+            if (o.userData.type === 'catcher_base' || o.userData.type === 'catcher_target' ||
+                o.userData.type === 'Catcher' || o.userData.type === 'Collision') {
+                o.visible = false;
+            }
+            const arrow = o.getObjectByName('ArrowHelper');
+            if (arrow) arrow.visible = false;
+
+            this.safeTraverse(o, child => {
+                if (child.isMesh && !child.userData.isPlayer && !child.userData.isHelper) {
+                    if (!child.geometry.boundsTree) child.geometry.computeBoundsTree();
+                }
+            });
+
+            // Reset runtime flags
+            if (o.userData.type === 'Goal') o.userData.triggered = false;
+            if (o.userData.type === 'Collision') o.userData.triggered = false;
+            if (o.userData.type === 'Bonus') o.userData.collected = false;
+            if (o.userData.type === 'PowerUp') o.userData.collected = false;
+        });
+
+        if (this.app.editor.linkGroup) this.app.editor.linkGroup.visible = false;
+
+        // Find player & camera
+        this.player = this.app.editor.objects.find(o => o.userData.isPlayer);
+        this.gameCameraObj = this.app.editor.objects.find(o => o.userData.isCamera);
+
+        if (this.gameCameraObj) {
+            const cam = this.app.sceneManager.camera;
+            this.gameCameraObj.updateMatrixWorld(true);
+            cam.position.copy(this.gameCameraObj.position);
+            cam.quaternion.copy(this.gameCameraObj.quaternion);
+            cam.fov = this.gameCameraObj.userData.fov || 60;
+            cam.updateProjectionMatrix();
+            this.gameCameraObj.visible = false;
+            if (this.player) {
+                this.cameraOffset = this.gameCameraObj.position.clone().sub(this.player.position);
+                if (this.gameCameraObj.userData.type !== '8WAY') {
+                    const invQ = this.player.quaternion.clone().invert();
+                    this.cameraOffset.applyQuaternion(invQ);
+                }
+            }
+        }
+
+        // Player mixer
+        if (this.player) {
+            this.player.userData.mode = 'normal';
+            const model = this.player.getObjectByName('model');
+            if (model) {
+                model.traverse(child => { if (child.isMesh) child.frustumCulled = false; });
+                this.mixer = new THREE.AnimationMixer(model);
+                (this.player.animations || []).forEach(clip => { this.actions[clip.name] = this.mixer.clipAction(clip); });
+                const idleAction = (this.player.userData.actions || []).find(a => a.type === 'Idle' && a.anim && a.active);
+                if (idleAction && this.actions[idleAction.anim]) {
+                    this.activeAction = this.actions[idleAction.anim];
+                    this.activeAction.play();
+                    this.mixer.update(0);
+                }
+            }
+        }
+
+        // Enemies & Bonuses
+        this.app.editor.objects.forEach(o => {
+            if (o.userData.type === 'Enemy') {
+                const model = o.getObjectByName('model');
+                let mixer = null;
+                const animations = o.animations || (model ? model.animations : []);
+                if (model && animations && animations.length > 0) {
+                    mixer = new THREE.AnimationMixer(model);
+                    this.enemyMixers.push(mixer);
+                    const startAnim = o.userData.animIdle;
+                    if (startAnim) {
+                        const clip = animations.find(c => c.name === startAnim);
+                        if (clip) { mixer.clipAction(clip).play(); mixer.update(0); }
+                    }
+                }
+                this.enemyRuntimeData.set(o.uuid, {
+                    patrolDir: 1, initialPos: o.position.clone(), initialRot: o.rotation.clone(),
+                    velocity: new THREE.Vector3(), mixer, frozen: !!o.userData.isFrozen,
+                    currentAnim: o.userData.animIdle
+                });
+            } else if (o.userData.type === 'Bonus') {
+                o.userData.collected = false;
+                const model = o.getObjectByName('model');
+                let mixer = null;
+                const animations = o.animations || (model ? model.animations : []);
+                if (model && animations && animations.length > 0) {
+                    mixer = new THREE.AnimationMixer(model);
+                    this.enemyMixers.push(mixer);
+                    if (o.userData.animIdle) {
+                        const clip = animations.find(c => c.name === o.userData.animIdle);
+                        if (clip) { mixer.clipAction(clip).play(); mixer.update(0); }
+                    }
+                }
+                this.bonusRuntimeData.set(o.uuid, { patrolDir: 1, initialPos: o.position.clone(), mixer });
+            } else if (o.userData.type === 'Model') {
+                const model = o.getObjectByName('model');
+                const animations = o.animations || (model ? model.animations : []);
+                if (model && animations.length > 0) {
+                    const mixer = new THREE.AnimationMixer(model);
+                    this.enemyMixers.push(mixer);
+                    if (o.userData.defaultAnim) {
+                        const clip = animations.find(c => c.name === o.userData.defaultAnim);
+                        if (clip) { mixer.clipAction(clip).play(); mixer.update(0); }
+                    }
+                }
+            } else if (o.userData.type === 'PowerUp') {
+                o.userData.isAsset = true;
+                const model = o.getObjectByName('model');
+                const animations = o.animations || (model ? model.animations : []);
+                if (model && animations && animations.length > 0) {
+                    const mixer = new THREE.AnimationMixer(model);
+                    this.enemyMixers.push(mixer);
+                    if (o.userData.defaultAnim) {
+                        const clip = animations.find(c => c.name === o.userData.defaultAnim);
+                        if (clip) { mixer.clipAction(clip).play(); mixer.update(0); }
+                    }
+                }
+            } else if (o.userData.type === 'Collision') {
+                o.userData.triggered = false;
+            }
+        });
+
+        this.updateHUD();
+
+        // ── 5. Reset clock to avoid massive first-frame dt spike ─────────────
+        this.clock.start();
+
+        // ── 6. Start BGM for the new level ────────────────────────────────────
+        if (levelData?.music) this.playBGM(levelData.music);
+
+        // ── 7. Dismiss loading overlay quickly (no "press key" required) ──────
+        if (splashEl) {
+            setTimeout(() => {
+                splashEl.classList.add('splash-fade-out');
+                setTimeout(() => {
+                    splashEl.classList.add('hidden');
+                    splashEl.classList.remove('splash-fade-out');
+                    if (splashPrompt) splashPrompt.style.display = '';
+                }, 420);
+                this.splashActive = false;
+            }, 600);
+        }
+
+        // Ensure play button stays active
+        const btnPlay = document.getElementById('btn-play');
+        if (btnPlay) btnPlay.classList.add('play-active');
+    }
+
+    // ======================== END SCREEN ========================
+
+    showEndScreen() {
+        // Guard: don't show twice
+        if (this.isEndScreen) return;
+
+        const ed = this.app.editor;
+        const el = document.getElementById('game-endscreen');
+        if (!el) { this._stopInternal(); return; }
+
+        // ── 1. Stop all game activity ─────────────────────────────────────────
+        // Remove game key listeners before switching state
+        window.removeEventListener('keydown', this.onKeyDown);
+        window.removeEventListener('keyup', this.onKeyUp);
+        window.removeEventListener('mousemove', this.onMouseMove);
+        window.removeEventListener('blur', this.onBlur);
+        this.app.sceneManager.renderer.domElement.removeEventListener('mousedown', this.onMouseDownLock);
+        document.exitPointerLock?.();
+
+        // Stop mixers & physics
+        if (this.mixer) { this.mixer.stopAllAction(); this.mixer = null; }
+        this.enemyMixers.forEach(m => m.stopAllAction());
+        this.enemyMixers = [];
+        this.bullets.forEach(b => { if (b.mesh.parent) b.mesh.parent.remove(b.mesh); });
+        this.bullets = [];
+        this.keys.clear();
+        if (this.flyTimer) { clearTimeout(this.flyTimer); this.flyTimer = null; }
+
+        // Stop audio
+        this.stopBGM();
+        this.stopSplashMusic();
+
+        // ── 2. Switch to END SCREEN state (blocks both game & editor loops) ───
+        this.isPlaying = false;
+        this.isEndScreen = true;
+
+        // ── 3. Prepare UI ─────────────────────────────────────────────────────
+        const hud = document.getElementById('game-hud');
+        if (hud) hud.classList.add('hidden');
+
+        const titleEl = document.getElementById('endscreen-title');
+        const subtitleEl = document.getElementById('endscreen-subtitle');
+        if (titleEl) titleEl.textContent = ed.gameEndTitle || '🏆 GIOCO COMPLETATO!';
+        if (subtitleEl) subtitleEl.textContent = ed.gameEndSubtitle || '';
+
+        // ── 4. Video / Image background ───────────────────────────────────────
+        const videoEl = document.getElementById('endscreen-video');
+        const imageEl = document.getElementById('endscreen-image');
+
+        if (ed.gameEndVideo) {
+            if (videoEl) {
+                // Reset src first to force reload (avoids stale buffer issues)
+                videoEl.pause();
+                videoEl.removeAttribute('src');
+                videoEl.load();
+
+                videoEl.loop  = true;
+                videoEl.muted = true;  // Required for autoplay policy
+
+                // Apply aspect ratio style
+                const aspect = ed.gameEndVideoAspect || 'cover';
+                // Reset positioning first
+                videoEl.style.position = 'absolute';
+                videoEl.style.top = '50%';
+                videoEl.style.left = '50%';
+                videoEl.style.transform = 'translate(-50%, -50%)';
+                videoEl.style.width = '100%';
+                videoEl.style.height = '100%';
+                videoEl.style.objectFit = 'cover';
+                videoEl.style.maxWidth = '';
+                videoEl.style.maxHeight = '';
+
+                if (aspect === 'contain') {
+                    videoEl.style.objectFit = 'contain';
+                } else if (aspect === '16/9') {
+                    // Force 16:9 box centered
+                    videoEl.style.width = '100%';
+                    videoEl.style.height = '100%';
+                    videoEl.style.objectFit = 'contain';
+                    // Use aspect-ratio for modern browsers
+                    videoEl.style.aspectRatio = '16/9';
+                } else if (aspect === 'vertical') {
+                    // Portrait (9:16) centered
+                    videoEl.style.width = 'auto';
+                    videoEl.style.height = '100%';
+                    videoEl.style.objectFit = 'contain';
+                    videoEl.style.aspectRatio = '9/16';
+                } else if (aspect === 'horizontal') {
+                    videoEl.style.width = '100%';
+                    videoEl.style.height = 'auto';
+                    videoEl.style.objectFit = 'fill';
+                } else {
+                    // 'cover' = default — fills the container
+                    videoEl.style.objectFit = 'cover';
+                }
+
+                videoEl.style.display = 'block';
+
+                const tryPlay = () => { videoEl.play().catch(() => {}); };
+                videoEl.src = ed.gameEndVideo;
+                videoEl.load();
+                videoEl.addEventListener('canplaythrough', tryPlay, { once: true });
+            }
+            if (imageEl) imageEl.style.display = 'none';
+        } else if (ed.gameEndImage) {
+            if (imageEl) { imageEl.src = ed.gameEndImage; imageEl.style.display = 'block'; }
+            if (videoEl) videoEl.style.display = 'none';
+        } else {
+            if (videoEl) videoEl.style.display = 'none';
+            if (imageEl) imageEl.style.display = 'none';
+        }
+
+        if (ed.gameEndMusic && !ed.gameEndVideo) this.playBGM(ed.gameEndMusic);
+
+        // ── 5. Show overlay ───────────────────────────────────────────────────
+        el.classList.remove('hidden', 'endscreen-fade-out');
+
+        // ── 6. Dismiss handler (key or click → fade → go to Home) ────────────
+        const dismiss = () => {
+            window.removeEventListener('keydown', dismiss);
+            window.removeEventListener('pointerdown', dismiss);
+
+            // Stop video & audio
+            if (videoEl) { videoEl.pause(); videoEl.src = ''; videoEl.load(); }
+            this.stopBGM();
+
+            // Fade out then transition to Home
+            el.classList.add('endscreen-fade-out');
+            setTimeout(() => {
+                el.classList.add('hidden');
+                el.classList.remove('endscreen-fade-out');
+
+                // Full cleanup (restores editor state, camera, orbit, etc.)
+                this._stopInternal();
+
+                // Re-launch from starting level (shows title splash)
+                const startIdx = (ed.startingLevelIndex >= 0 && ed.startingLevelIndex < ed.levels.length)
+                    ? ed.startingLevelIndex : 0;
+                if (ed.levels.length > 0) {
+                    ed.loadLevelByIndex(startIdx).then(() => {
+                        this.start(startIdx);
+                        const btnPlay = document.getElementById('btn-play');
+                        if (btnPlay) btnPlay.classList.add('play-active');
+                    });
+                }
+            }, 500);
+        };
+
+        // Delay so the key that triggered the Goal doesn't immediately dismiss
+        setTimeout(() => {
+            window.addEventListener('keydown', dismiss);
+            window.addEventListener('pointerdown', dismiss);
+        }, 500);
     }
 }

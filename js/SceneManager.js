@@ -1,4 +1,5 @@
 import * as THREE from 'three';
+import { RoomEnvironment } from 'three/addons/environments/RoomEnvironment.js';
 import { EffectComposer } from 'three/addons/postprocessing/EffectComposer.js';
 import { RenderPass } from 'three/addons/postprocessing/RenderPass.js';
 import { ShaderPass } from 'three/addons/postprocessing/ShaderPass.js';
@@ -16,6 +17,7 @@ export class SceneManager {
         this.pixelPass = null;
         this.outputPass = null;
         this.usePixelShader = false;
+        this.hasSplatEnv = false; // When true, bypass composer for Spark compatibility
     }
 
     init() {
@@ -29,8 +31,10 @@ export class SceneManager {
 
         // Renderer Setup
         this.renderer = new THREE.WebGLRenderer({ antialias: true });
+        this.renderer.shadowMap.enabled = false;
+        this.renderer.shadowMap.type = THREE.PCFSoftShadowMap;
         this.viewport.appendChild(this.renderer.domElement);
-        
+
         // Post Processing
         this.composer = new EffectComposer(this.renderer);
         const renderPass = new RenderPass(this.scene, this.camera);
@@ -41,15 +45,25 @@ export class SceneManager {
         this.pixelPass.uniforms['pixelSize'].value = 6;
         this.pixelPass.enabled = false;
         this.composer.addPass(this.pixelPass);
-        
+
         this.outputPass = new OutputPass();
         this.composer.addPass(this.outputPass);
 
         // Helpers
         this.scene.add(new THREE.AmbientLight(0xffffff, 0.8));
-        const dirLight = new THREE.DirectionalLight(0xffffff, 1);
-        dirLight.position.set(5, 10, 7);
-        this.scene.add(dirLight);
+        this.dirLight = new THREE.DirectionalLight(0xffffff, 1);
+        this.dirLight.position.set(5, 10, 7);
+        this.dirLight.castShadow = false;
+        this.dirLight.shadow.mapSize.width = 2048;
+        this.dirLight.shadow.mapSize.height = 2048;
+        this.dirLight.shadow.camera.near = 0.5;
+        this.dirLight.shadow.camera.far = 50;
+        this.dirLight.shadow.camera.left = -20;
+        this.dirLight.shadow.camera.right = 20;
+        this.dirLight.shadow.camera.top = 20;
+        this.dirLight.shadow.camera.bottom = -20;
+        this.dirLight.shadow.bias = -0.001;
+        this.scene.add(this.dirLight);
 
         // Grid
         const grid = new THREE.GridHelper(20, 20, 0x444444, 0x333333);
@@ -77,8 +91,13 @@ export class SceneManager {
         // Resize Observer
         const res = new ResizeObserver(() => this.onResize());
         res.observe(this.viewport);
-        
+
         this.onResize(); // Initial sizing
+    }
+
+    /** Called by Editor when a SplatEnv is added/removed. Bypasses EffectComposer. */
+    setSplatMode(active) {
+        this.hasSplatEnv = active;
     }
 
     onResize() {
@@ -98,7 +117,10 @@ export class SceneManager {
 
     update() {
         if (this.renderer && this.scene && this.camera) {
-            if (this.usePixelShader && this.composer) {
+            // Spark SplatMesh requires direct renderer.render() - bypass composer when SplatEnv is present
+            if (this.hasSplatEnv) {
+                this.renderer.render(this.scene, this.camera);
+            } else if (this.usePixelShader && this.composer) {
                 this.composer.render();
             } else {
                 this.renderer.render(this.scene, this.camera);
@@ -112,5 +134,82 @@ export class SceneManager {
             this.pixelPass.enabled = enabled;
             if (size) this.pixelPass.uniforms['pixelSize'].value = size;
         }
+    }
+
+    setPBROutput(enabled) {
+        if (enabled) {
+            this.renderer.outputColorSpace = THREE.SRGBColorSpace;
+            this.renderer.toneMapping = THREE.ACESFilmicToneMapping;
+            this.renderer.toneMappingExposure = 1.0;
+        } else {
+            this.renderer.outputColorSpace = THREE.LinearSRGBColorSpace;
+            this.renderer.toneMapping = THREE.NoToneMapping;
+        }
+
+        this.scene.traverse((child) => {
+            if (child.isMesh && child.material) child.material.needsUpdate = true;
+        });
+    }
+
+    setShadows(enabled) {
+        this.renderer.shadowMap.enabled = enabled;
+        if (this.dirLight) this.dirLight.castShadow = enabled;
+
+        this.scene.traverse((child) => {
+            if (child.isMesh) {
+                let isHelper = false;
+                let curr = child;
+                while (curr) {
+                    if (curr.name === 'TransformControlsGizmo' || curr.type === 'TransformControls' || curr.type === 'GridHelper' || curr.type === 'AxesHelper' || curr.name === 'ArrowHelper' ||
+                        (curr.userData && curr.userData.isAsset && ['PointLight', 'SpotLight', 'DirectionalLight'].includes(curr.userData.type))) {
+                        isHelper = true;
+                        break;
+                    }
+                    curr = curr.parent;
+                }
+
+                if (isHelper) {
+                    child.castShadow = false;
+                    child.receiveShadow = false;
+                } else {
+                    child.castShadow = enabled;
+                    child.receiveShadow = enabled;
+                }
+                if (child.material) child.material.needsUpdate = true;
+            } else if (child.isLight && child.name === 'light_source') {
+                const parentWantsShadows = child.parent && child.parent.userData && child.parent.userData.castShadow !== false;
+                child.castShadow = enabled && parentWantsShadows;
+            }
+        });
+
+        const floor = this.scene.getObjectByName('Floor');
+        if (floor) {
+            floor.receiveShadow = enabled;
+            floor.castShadow = false;
+            if (floor.material) floor.material.needsUpdate = true;
+        }
+    }
+
+    setReflections(enabled) {
+        if (enabled) {
+            if (!this.pmremGenerator) {
+                this.pmremGenerator = new THREE.PMREMGenerator(this.renderer);
+                this.pmremGenerator.compileEquirectangularShader();
+            }
+            if (!this.roomEnvironment) {
+                this.roomEnvironment = new RoomEnvironment();
+            }
+            this.scene.environment = this.pmremGenerator.fromScene(this.roomEnvironment).texture;
+        } else {
+            this.scene.environment = null;
+            if (this.pmremGenerator) {
+                this.pmremGenerator.dispose();
+                this.pmremGenerator = null;
+            }
+        }
+
+        this.scene.traverse((child) => {
+            if (child.isMesh && child.material) child.material.needsUpdate = true;
+        });
     }
 }

@@ -4,6 +4,7 @@ import { TransformControls } from 'three/addons/controls/TransformControls.js';
 import { GLTFLoader } from 'three/addons/loaders/GLTFLoader.js';
 import * as SkeletonUtils from 'three/addons/utils/SkeletonUtils.js';
 import { PlayerFactory } from './Player.js';
+import { SplatMesh } from '@sparkjsdev/spark';
 
 export class Editor {
     constructor(app) {
@@ -14,6 +15,8 @@ export class Editor {
         this.hIndex = -1;
         this.loader = new GLTFLoader();
         this.clipboard = null;
+        this.levels = []; // Array of { name, data, music } level entries
+        this.currentLevelIndex = -1; // -1 = unsaved scene
 
         // Raycaster
         this.raycaster = new THREE.Raycaster();
@@ -23,6 +26,22 @@ export class Editor {
         this.mixer = null;
         this.clock = new THREE.Clock();
         this.currentAnim = null;
+        this.gameTitle = 'Web 3D Game';
+        this.gameSplashSubtitle = '3D Editor Engine'; // Default subtitle
+        this.gameSplashImage = null; // Data URL for splash background
+        this.gameSplashPromptBg = 'rgba(255,255,255,0.1)'; // Default prompt bg
+        this.gameSplashPromptColor = '#ffffff'; // Default prompt text color
+        this.gameSplashMusic = null; // Data URL for splash music
+        this.gameSplashMusicFilename = ''; // Source filename
+        this.startingLevelIndex = 0; // Default Starting Level
+        // End Screen
+        this.gameEndTitle = '';
+        this.gameEndSubtitle = '';
+        this.gameEndImage = null;
+        this.gameEndVideo = null;
+        this.gameEndVideoAspect = 'cover'; // cover | contain | 16/9 | vertical | horizontal
+        this.gameEndMusic = null;
+        this.gameEndMusicFilename = '';
     }
 
     init() {
@@ -31,14 +50,15 @@ export class Editor {
         this.orbit = new OrbitControls(camera, renderer.domElement);
         this.gizmo = new TransformControls(camera, renderer.domElement);
         this.gizmo.size = 0.5;
-        this.gizmo.userData.isHelper = true; // Mark as helper to ignore in game raycasts
+        const helper = this.gizmo.getHelper();
+        helper.userData.isHelper = true;
+        helper.name = 'TransformControlsGizmo';
 
-        // Enable Snapping by default
         this.gizmo.setTranslationSnap(0.5);
         this.gizmo.setRotationSnap(THREE.MathUtils.degToRad(5));
         this.gizmo.setScaleSnap(0.1);
 
-        this.app.sceneManager.scene.add(this.gizmo);
+        this.app.sceneManager.scene.add(helper);
 
         this.linkGroup = new THREE.Group();
         this.app.sceneManager.scene.add(this.linkGroup);
@@ -51,7 +71,6 @@ export class Editor {
         this.gizmo.addEventListener('dragging-changed', (e) => {
             this.orbit.enabled = !e.value;
             if (e.value) {
-                // Drag Start
                 if (this.gizmo.object) {
                     transformStartData = {
                         p: this.gizmo.object.position.clone(),
@@ -60,7 +79,6 @@ export class Editor {
                     };
                 }
             } else {
-                // Drag End
                 if (this.gizmo.object && transformStartData) {
                     const obj = this.gizmo.object;
                     if (!obj.position.equals(transformStartData.p) || !obj.rotation.equals(transformStartData.r) || !obj.scale.equals(transformStartData.s)) {
@@ -99,14 +117,11 @@ export class Editor {
         } catch (e) {
             this.clipboard = this.selected.clone();
         }
-        // Deep copy userData to avoid reference issues
-        this.clipboard.userData = JSON.parse(JSON.stringify(this.selected.userData));
-        this.clipboard.applyMatrix4(this.selected.matrixWorld); // Bake transform? No, position/rot are copied by clone usually.
-        // Wait, clone copies local transform. matrixWorld isn't needed.
-        // Just need to ensure rotation/position are correct.
         this.clipboard.position.copy(this.selected.position);
         this.clipboard.rotation.copy(this.selected.rotation);
         this.clipboard.scale.copy(this.selected.scale);
+        if (this.selected.animations) this.clipboard.animations = this.selected.animations;
+        this.clipboard.userData = JSON.parse(JSON.stringify(this.selected.userData));
     }
 
     paste() {
@@ -122,10 +137,16 @@ export class Editor {
         clone.userData = JSON.parse(JSON.stringify(this.clipboard.userData));
         clone.position.add(new THREE.Vector3(1, 0, 1));
         clone.name = this.clipboard.name + "_Copy";
+        if (this.clipboard.animations) clone.animations = this.clipboard.animations;
 
-        // Restore ArrowHelper if needed (cloning might lose it or duplicate it weirdly?)
-        // SkeletonUtils.clone usually clones children too.
-        // ArrowHelper is a child.
+        const oldArrow = clone.getObjectByName('ArrowHelper');
+        if (oldArrow) clone.remove(oldArrow);
+
+        if (clone.userData.type === 'Enemy') {
+            const arrow = new THREE.ArrowHelper(new THREE.Vector3(0, 0, 1), new THREE.Vector3(0, 0, 0), 1.5, 0xff0000);
+            arrow.name = 'ArrowHelper';
+            clone.add(arrow);
+        }
 
         this.addObject(clone);
         this.app.ui.rebuildLibrary();
@@ -161,54 +182,7 @@ export class Editor {
             action.object.position.copy(data.p);
             action.object.rotation.copy(data.r);
             action.object.scale.copy(data.s);
-            // Force gizmo update if attached
-            if (this.gizmo.object === action.object) {
-                // Detach/Attach forces refresh? Or just position update handles it.
-                // TransformControls updates automatically usually.
-            }
         }
-    }
-
-    copy() {
-        if (!this.selected) return;
-        try {
-            this.clipboard = SkeletonUtils.clone(this.selected);
-        } catch (e) {
-            this.clipboard = this.selected.clone();
-        }
-        this.clipboard.position.copy(this.selected.position);
-        this.clipboard.rotation.copy(this.selected.rotation);
-        this.clipboard.scale.copy(this.selected.scale);
-        if (this.selected.animations) this.clipboard.animations = this.selected.animations;
-    }
-
-    paste() {
-        if (!this.clipboard) return;
-
-        let clone;
-        try {
-            clone = SkeletonUtils.clone(this.clipboard);
-        } catch (e) {
-            clone = this.clipboard.clone();
-        }
-
-        clone.userData = JSON.parse(JSON.stringify(this.clipboard.userData));
-        clone.position.add(new THREE.Vector3(1, 0, 1));
-        clone.name = this.clipboard.name + "_Copy";
-        if (this.clipboard.animations) clone.animations = this.clipboard.animations;
-
-        // Clean up ArrowHelper
-        const oldArrow = clone.getObjectByName('ArrowHelper');
-        if (oldArrow) clone.remove(oldArrow);
-
-        if (clone.userData.type === 'Enemy') {
-            const arrow = new THREE.ArrowHelper(new THREE.Vector3(0, 0, 1), new THREE.Vector3(0, 0, 0), 1.5, 0xff0000);
-            arrow.name = 'ArrowHelper';
-            clone.add(arrow);
-        }
-
-        this.addObject(clone);
-        this.app.ui.rebuildLibrary();
     }
 
     enableOrbit(enabled) {
@@ -235,11 +209,11 @@ export class Editor {
         this.mouse.y = -((e.clientY - rect.top) / rect.height) * 2 + 1;
 
         this.raycaster.setFromCamera(this.mouse, this.app.sceneManager.camera);
-        const hits = this.raycaster.intersectObjects(this.app.sceneManager.scene.children, true);
+        const targets = this.app.sceneManager.scene.children.filter(c => c.userData && c.userData.type !== 'SplatEnv');
+        const hits = this.raycaster.intersectObjects(targets, true);
 
         if (hits.length) {
             let target = hits[0].object;
-            // Find the root parent that is in our tracked objects list
             while (target && !this.objects.includes(target) && target.parent) {
                 target = target.parent;
             }
@@ -324,10 +298,6 @@ export class Editor {
     deleteSelected() {
         if (!this.selected) return;
 
-        const type = this.selected.userData.type;
-        const data = this.selected.userData.glbSource || null;
-        const isAsset = this.selected.userData.isAsset;
-
         this.app.sceneManager.scene.remove(this.selected);
         const idx = this.objects.indexOf(this.selected);
         if (idx > -1) this.objects.splice(idx, 1);
@@ -336,12 +306,19 @@ export class Editor {
 
         this.app.ui.rebuildLibrary();
         this.app.ui.update();
+        this.updateSplatMode();
     }
 
     addObject(obj) {
         this.objects.push(obj);
         this.app.sceneManager.scene.add(obj);
         this.select(obj);
+        this.updateSplatMode();
+    }
+
+    updateSplatMode() {
+        const hasSplat = this.objects.some(o => o.userData.type === 'SplatEnv');
+        this.app.sceneManager.setSplatMode(hasSplat);
     }
 
     loadGLB(url, onLoaded) {
@@ -352,15 +329,12 @@ export class Editor {
 
             const m = gltf.scene;
             m.name = 'model';
-
-            // Default Scale 1
             m.scale.set(1, 1, 1);
 
-            // Smart Offset: Bottom of hitbox
             let height = 2.0;
             if (this.selected.geometry?.parameters) {
                 const p = this.selected.geometry.parameters;
-                if (p.height) height = p.height + (p.radius ? p.radius * 2 : 0); // Capsule or Box
+                if (p.height) height = p.height + (p.radius ? p.radius * 2 : 0);
             }
             m.position.y = -height / 2;
 
@@ -371,7 +345,6 @@ export class Editor {
 
             this.autoMapPlayerAnimations(this.selected);
 
-            // Apply material fixes
             this.selected.userData.alphaMode = this.selected.userData.alphaMode || 'mask';
             this.selected.userData.alphaTest = this.selected.userData.alphaTest !== undefined ? this.selected.userData.alphaTest : 0.5;
             this.selected.userData.doubleSide = this.selected.userData.doubleSide !== undefined ? this.selected.userData.doubleSide : true;
@@ -384,69 +357,69 @@ export class Editor {
     }
 
     reloadModel(obj, url, onLoaded) {
-        this.loader.load(url, (gltf) => {
-            const old = obj.getObjectByName('model');
-            if (old) obj.remove(old);
-            const m = gltf.scene;
-            m.name = 'model';
+        return new Promise((resolve) => {
+            this.loader.load(url, (gltf) => {
+                const old = obj.getObjectByName('model');
+                if (old) obj.remove(old);
+                const m = gltf.scene;
+                m.name = 'model';
 
-            // Smart Offset if not saved OR if saved offset is 0 (suspicious) for grounded entities
-            let useSmartOffset = !obj.userData.modelOffset;
-            if (obj.userData.modelOffset && (obj.userData.type === 'Enemy' || obj.userData.isPlayer)) {
-                if (Math.abs(obj.userData.modelOffset[1]) < 0.001) useSmartOffset = true;
-            }
-
-            if (!useSmartOffset) {
-                m.position.fromArray(obj.userData.modelOffset);
-            } else {
-                // For 'Model' type (Group), default to 0 offset if no geometry parameters
-                if (obj.userData.type === 'Model' && !obj.geometry) {
-                    m.position.set(0, 0, 0);
-                } else {
-                    let height = 2.0;
-                    if (obj.geometry?.parameters) {
-                        const p = obj.geometry.parameters;
-                        if (p.height !== undefined) height = p.height + (p.radius ? p.radius * 2 : 0);
-                        else if (p.length !== undefined) height = p.length + (p.radius ? p.radius * 2 : 0);
-                    }
-                    m.position.set(0, -height / 2, 0);
+                let useSmartOffset = !obj.userData.modelOffset;
+                if (obj.userData.modelOffset && (obj.userData.type === 'Enemy' || obj.userData.isPlayer)) {
+                    if (Math.abs(obj.userData.modelOffset[1]) < 0.001) useSmartOffset = true;
                 }
-            }
 
-            // Restore rotation/scale
-            if (obj.userData.modelRotation) m.rotation.fromArray(obj.userData.modelRotation);
+                if (!useSmartOffset) {
+                    m.position.fromArray(obj.userData.modelOffset);
+                } else {
+                    if (obj.userData.type === 'Model' && !obj.geometry) {
+                        m.position.set(0, 0, 0);
+                    } else {
+                        let height = 2.0;
+                        if (obj.geometry?.parameters) {
+                            const p = obj.geometry.parameters;
+                            if (p.height !== undefined) height = p.height + (p.radius ? p.radius * 2 : 0);
+                            else if (p.length !== undefined) height = p.length + (p.radius ? p.radius * 2 : 0);
+                        }
+                        m.position.set(0, -height / 2, 0);
+                    }
+                }
 
-            if (obj.userData.modelScale) {
-                m.scale.fromArray(obj.userData.modelScale);
-            } else {
-                // Default scale 1 for Model, 0.5 for legacy/others
-                if (obj.userData.type === 'Model') m.scale.set(1, 1, 1);
-                else m.scale.set(0.5, 0.5, 0.5);
-            }
+                if (obj.userData.modelRotation) m.rotation.fromArray(obj.userData.modelRotation);
 
-            obj.add(m);
-            obj.animations = gltf.animations;
-            if (obj.userData.isPlayer) {
-                obj.userData.anims = gltf.animations.map(a => a.name);
-                this.autoMapPlayerAnimations(obj);
-            } else if (obj.userData.type === 'Model' || obj.userData.type === 'Enemy' || obj.userData.type === 'Bonus') {
-                // Ensure anims list is available for all animated types
-                obj.userData.anims = gltf.animations.map(a => a.name);
-            }
+                if (obj.userData.modelScale) {
+                    m.scale.fromArray(obj.userData.modelScale);
+                } else {
+                    if (obj.userData.type === 'Model') m.scale.set(1, 1, 1);
+                    else m.scale.set(0.5, 0.5, 0.5);
+                }
 
-            // Apply material fixes
-            if (obj.userData.type === 'Model') {
-                obj.userData.alphaMode = obj.userData.alphaMode || 'mask';
-                obj.userData.alphaTest = obj.userData.alphaTest !== undefined ? obj.userData.alphaTest : 0.5;
-                obj.userData.doubleSide = obj.userData.doubleSide !== undefined ? obj.userData.doubleSide : true;
-            }
-            this.updateMaterialSettings(m);
+                obj.add(m);
+                obj.animations = gltf.animations;
+                if (obj.userData.isPlayer) {
+                    obj.userData.anims = gltf.animations.map(a => a.name);
+                    this.autoMapPlayerAnimations(obj);
+                } else if (obj.userData.type === 'Model' || obj.userData.type === 'Enemy' || obj.userData.type === 'Bonus') {
+                    obj.userData.anims = gltf.animations.map(a => a.name);
+                }
 
-            if (this.selected === obj) {
-                this.setupMixer(obj);
-                this.app.ui.updateProperties();
-            }
-            if (onLoaded) onLoaded(m);
+                if (obj.userData.type === 'Model') {
+                    obj.userData.alphaMode = obj.userData.alphaMode || 'mask';
+                    obj.userData.alphaTest = obj.userData.alphaTest !== undefined ? obj.userData.alphaTest : 0.5;
+                    obj.userData.doubleSide = obj.userData.doubleSide !== undefined ? obj.userData.doubleSide : true;
+                }
+                this.updateMaterialSettings(m);
+
+                if (this.selected === obj) {
+                    this.setupMixer(obj);
+                    this.app.ui.updateProperties();
+                }
+                if (onLoaded) onLoaded(m);
+                resolve(m);
+            }, undefined, (err) => {
+                console.error("Error loading models", url, err);
+                resolve(null);
+            });
         });
     }
 
@@ -486,15 +459,14 @@ export class Editor {
         if (this.app.ui) this.app.ui.updateProperties();
     }
 
-    spawnAsset(type, data, clientX, clientY, defaultAnim = null) {
+    spawnAsset(type, data, clientX, clientY, defaultAnim = null, name = null) {
         const rect = this.app.sceneManager.viewport.getBoundingClientRect();
         this.mouse.x = ((clientX - rect.left) / rect.width) * 2 - 1;
         this.mouse.y = -((clientY - rect.top) / rect.height) * 2 + 1;
         this.raycaster.setFromCamera(this.mouse, this.app.sceneManager.camera);
 
-        // Improved target filtering for recursive raycast
         const targets = this.app.sceneManager.scene.children.filter(o => {
-            if (o.userData.isHelper || o.userData.isCamera) return false;
+            if (o.userData.isHelper || o.userData.isCamera || o.userData.type === 'SplatEnv') return false;
             if (o.type.includes('Light') || o.type.includes('Camera') || o.type === 'GridHelper' || o.type === 'TransformControls') return false;
             return true;
         });
@@ -512,11 +484,47 @@ export class Editor {
             return;
         }
 
+        if (type === 'SplatEnv' && data) {
+            const wrapper = new THREE.Group();
+            wrapper.position.copy(pos);
+            wrapper.name = name || ('SplatEnv_' + this.objects.length);
+            wrapper.userData = {
+                isAsset: true,
+                type: 'SplatEnv',
+                splatSource: data,
+                glbFilename: name || 'splat',
+                hasCollision: false
+            };
+            try {
+                const blobUrl = this._dataUrlToBlobUrl(data);
+                const sm = new SplatMesh({
+                    url: blobUrl,
+                    renderer: this.app.sceneManager.renderer,
+                    camera: this.app.sceneManager.camera
+                });
+                sm.name = 'splatMesh';
+                sm.quaternion.set(1, 0, 0, 0);
+                sm.scale.set(1, 1, 1);
+                sm.frustumCulled = false;
+                sm.castShadow = false;
+                sm.receiveShadow = false;
+                sm.matrixAutoUpdate = false;
+                wrapper.add(sm);
+                console.log('[SplatEnv] SplatMesh created.');
+            } catch (err) {
+                console.warn('[SplatEnv] SplatMesh creation failed:', err);
+            }
+            this.addObject(wrapper);
+            this.focusSelected();
+            this.app.ui.rebuildLibrary();
+            return;
+        }
+
         if (type === 'Model' && data) {
             this.loader.load(data, (gltf) => {
                 const m = gltf.scene;
                 const wrapper = new THREE.Group();
-                wrapper.position.copy(pos); // Place exactly at hit point
+                wrapper.position.copy(pos);
                 wrapper.name = "Model_" + this.objects.length;
                 wrapper.userData = { isAsset: true, type: 'Model', glbSource: data };
                 if (defaultAnim) wrapper.userData.defaultAnim = defaultAnim;
@@ -526,11 +534,6 @@ export class Editor {
                 wrapper.animations = gltf.animations;
                 wrapper.userData.anims = gltf.animations.map(a => a.name);
 
-                wrapper.add(m);
-                wrapper.animations = gltf.animations;
-                wrapper.userData.anims = gltf.animations.map(a => a.name);
-
-                // Defaults
                 wrapper.userData.alphaMode = 'mask';
                 wrapper.userData.alphaTest = 0.5;
                 wrapper.userData.doubleSide = true;
@@ -542,6 +545,8 @@ export class Editor {
         }
 
         let geo, mat = new THREE.MeshStandardMaterial({ color: 0x888888, wireframe: true, transparent: true, opacity: 0.5 });
+        let isLight = false;
+
         switch (type) {
             case 'Enemy':
                 geo = new THREE.BoxGeometry(0.8, 0.8, 0.8);
@@ -557,11 +562,25 @@ export class Editor {
                 geo = new THREE.BoxGeometry(1, 1, 1);
                 mat = new THREE.MeshBasicMaterial({ color: 0x22ff22, wireframe: true, transparent: true, opacity: 0.3 });
                 break;
+            case 'PointLight':
+                geo = new THREE.SphereGeometry(0.2);
+                mat = new THREE.MeshBasicMaterial({ color: 0xffff00, wireframe: true });
+                isLight = true;
+                break;
+            case 'SpotLight':
+                geo = new THREE.ConeGeometry(0.2, 0.5, 4);
+                mat = new THREE.MeshBasicMaterial({ color: 0xffffaa, wireframe: true });
+                isLight = true;
+                break;
+            case 'DirectionalLight':
+                geo = new THREE.BoxGeometry(0.4, 0.4, 0.4);
+                mat = new THREE.MeshBasicMaterial({ color: 0xffffff, wireframe: true });
+                isLight = true;
+                break;
             default: geo = new THREE.BoxGeometry(0.5, 0.5, 0.5);
         }
         const mesh = new THREE.Mesh(geo, mat);
 
-        // Calculate offset for basic shapes
         let heightOffset = 0.5;
         if (geo.parameters) {
             if (geo.parameters.height) heightOffset = geo.parameters.height / 2;
@@ -572,6 +591,57 @@ export class Editor {
         mesh.name = type + "_" + this.objects.length;
         mesh.userData = { isAsset: true, type: type };
 
+        if (isLight) {
+            mesh.castShadow = false;
+            mesh.receiveShadow = false;
+            mesh.userData.color = mat.color.getHex();
+            mesh.userData.intensity = 1.0;
+            mesh.userData.distance = (type === 'DirectionalLight') ? 0 : 10;
+
+            let lightObj;
+            const shadowsEnabled = this.app.sceneManager.renderer.shadowMap.enabled;
+
+            if (type === 'PointLight') {
+                lightObj = new THREE.PointLight(0xffffff, 1.0, 10);
+            } else if (type === 'SpotLight') {
+                lightObj = new THREE.SpotLight(0xffffff, 1.0, 10, Math.PI / 4, 0.5, 1);
+                lightObj.target.position.set(0, -1, 0);
+                mesh.add(lightObj.target);
+            } else if (type === 'DirectionalLight') {
+                lightObj = new THREE.DirectionalLight(0xffffff, 1.0);
+            }
+
+            if (lightObj) {
+                lightObj.name = 'light_source';
+                lightObj.castShadow = shadowsEnabled;
+
+                mesh.userData.castShadow = true;
+                mesh.userData.shadowRes = 1024;
+                mesh.userData.shadowBias = -0.001;
+                mesh.userData.shadowNormalBias = 0;
+                mesh.userData.shadowRadius = 1;
+                mesh.userData.shadowCamNear = 0.5;
+                mesh.userData.shadowCamFar = 500;
+
+                lightObj.shadow.mapSize.width = 1024;
+                lightObj.shadow.mapSize.height = 1024;
+                lightObj.shadow.bias = -0.001;
+                lightObj.shadow.normalBias = 0;
+                lightObj.shadow.radius = 1;
+                lightObj.shadow.camera.near = 0.5;
+                lightObj.shadow.camera.far = 500;
+
+                if (type === 'DirectionalLight') {
+                    mesh.userData.shadowCamSize = 10;
+                    lightObj.shadow.camera.left = -10;
+                    lightObj.shadow.camera.right = 10;
+                    lightObj.shadow.camera.top = 10;
+                    lightObj.shadow.camera.bottom = -10;
+                }
+                mesh.add(lightObj);
+            }
+        }
+
         if (type === 'Bonus') {
             mesh.userData.radius = 1.0;
             mesh.userData.points = 100;
@@ -579,7 +649,7 @@ export class Editor {
         }
 
         if (type === 'Collision') {
-            mesh.userData.actionType = 'restart'; // Default action
+            mesh.userData.actionType = 'restart';
             mesh.userData.actionValue = '';
             mesh.userData.oneShot = true;
             mesh.userData.isTrigger = true;
@@ -677,14 +747,13 @@ export class Editor {
         clone.userData = JSON.parse(JSON.stringify(source.userData));
         if (source.animations) clone.animations = source.animations;
 
-        // Position
         const rect = this.app.sceneManager.viewport.getBoundingClientRect();
         this.mouse.x = ((clientX - rect.left) / rect.width) * 2 - 1;
         this.mouse.y = -((clientY - rect.top) / rect.height) * 2 + 1;
         this.raycaster.setFromCamera(this.mouse, this.app.sceneManager.camera);
 
         const targets = this.app.sceneManager.scene.children.filter(o => {
-            if (o.userData.isHelper || o.userData.isCamera) return false;
+            if (o.userData.isHelper || o.userData.isCamera || o.userData.type === 'SplatEnv') return false;
             if (o.type.includes('Light') || o.type.includes('Camera') || o.type === 'GridHelper' || o.type === 'TransformControls') return false;
             return true;
         });
@@ -694,11 +763,9 @@ export class Editor {
         if (hits.length > 0) pos.copy(hits[0].point);
         else this.raycaster.ray.intersectPlane(new THREE.Plane(new THREE.Vector3(0, 1, 0), 0), pos);
 
-        // Adjust Y
         if (clone.userData.isPlayer) {
             pos.y += 1;
         } else if (clone.userData.type !== 'Model') {
-            // Basic shapes offset
             let heightOffset = 0.5;
             if (clone.geometry && clone.geometry.parameters) {
                 const p = clone.geometry.parameters;
@@ -709,7 +776,6 @@ export class Editor {
         }
         clone.position.copy(pos);
 
-        // Name
         const match = source.name.match(/^(.*?)[\._]?(\d+)$/);
         if (match) {
             const prefix = match[1];
@@ -720,7 +786,6 @@ export class Editor {
             clone.name = source.name + ".001";
         }
 
-        // Clean up ArrowHelper
         const oldArrow = clone.getObjectByName('ArrowHelper');
         if (oldArrow) clone.remove(oldArrow);
 
@@ -734,30 +799,219 @@ export class Editor {
         this.app.ui.rebuildLibrary();
     }
 
-    saveProject() {
+    // ====== LEVEL MANAGEMENT ======
+
+    /** Serialize current scene to JSON string */
+    getLevelSerializedData() {
         const data = {
             scene: this.objects.map(o => {
                 const objData = { name: o.name, p: o.position.toArray(), r: o.rotation.toArray(), s: o.scale.toArray(), userData: o.userData };
-
                 const model = o.getObjectByName('model');
                 if (model) {
                     objData.modelOffset = model.position.toArray();
                     objData.modelRotation = model.rotation.toArray();
                     objData.modelScale = model.scale.toArray();
                 }
-
                 if (o.geometry?.parameters) {
                     const p = o.geometry.parameters;
-                    objData.geo = {
-                        radius: p.radius,
-                        height: p.height !== undefined ? p.height : p.length,
-                        width: p.width,
-                        depth: p.depth
-                    };
+                    objData.geo = { radius: p.radius, height: p.height !== undefined ? p.height : p.length, width: p.width, depth: p.depth };
                 }
                 return objData;
             }),
             library: this.app.ui.library || []
+        };
+        return JSON.stringify(data);
+    }
+
+    /** Save current scene as a new level slot */
+    saveCurrentAsLevel(name) {
+        const levelName = name || `Level ${this.levels.length + 1}`;
+        const serialized = this.getLevelSerializedData();
+        this.levels.push({ name: levelName, data: serialized, music: '' });
+        this.currentLevelIndex = this.levels.length - 1;
+        if (this.app.ui.renderLevelList) this.app.ui.renderLevelList();
+    }
+
+    /** Update an existing level slot with current scene */
+    updateLevel(index) {
+        if (index < 0 || index >= this.levels.length) return;
+        this.levels[index].data = this.getLevelSerializedData();
+        if (this.app.ui.renderLevelList) this.app.ui.renderLevelList();
+    }
+
+    /** Load a level by index into the editor */
+    loadLevelByIndex(index) {
+        if (index < 0 || index >= this.levels.length) {
+            console.warn('Level index out of range:', index);
+            return;
+        }
+        const level = this.levels[index];
+        try {
+            const rootData = JSON.parse(level.data);
+            const sceneData = rootData.scene || rootData;
+            this.clearScene();
+            if (this.app.ui.restoreLibrary) this.app.ui.restoreLibrary(rootData.library || []);
+            this._restoreSceneData(sceneData);
+            this.currentLevelIndex = index;
+            if (this.app.ui.renderLevelList) this.app.ui.renderLevelList();
+            this.app.ui.rebuildLibrary();
+            this.app.ui.update();
+            this.updateLinks();
+        } catch (err) { console.error('Error loading level:', err); }
+    }
+
+    /** Internal: restore scene from data array */
+    _restoreSceneData(sceneData) {
+        const promises = [];
+        sceneData.forEach((d) => {
+            let obj;
+            const uData = d.userData || {};
+            if (!uData.isPlayer && (uData.type === 'Player' || uData.typology)) uData.isPlayer = true;
+            if (!uData.isCamera && d.name.includes("Camera")) uData.isCamera = true;
+
+            if (uData.isPlayer) {
+                const r = d.geo?.radius || 0.5, h = d.geo?.height || 1.0;
+                obj = new THREE.Mesh(new THREE.CapsuleGeometry(r, h, 4, 8), new THREE.MeshStandardMaterial({ color: 0x4caf50, transparent: true, opacity: 0.5, wireframe: true }));
+            } else if (uData.isCamera) {
+                obj = new THREE.Mesh(new THREE.BoxGeometry(0.5, 0.5, 1), new THREE.MeshBasicMaterial({ color: 0x555555, wireframe: true }));
+                obj.add(new THREE.PerspectiveCamera(uData.fov || 60, 1, 0.1, 100));
+            } else if (uData.isAsset) {
+                const type = uData.type;
+                if (type === 'Model') {
+                    obj = new THREE.Group();
+                } else if (type === 'SplatEnv') {
+                    obj = new THREE.Group();
+                } else {
+                    let geo, mat = new THREE.MeshStandardMaterial({ color: 0x888888, wireframe: true, transparent: true, opacity: 0.5 });
+                    let isLight = false;
+                    switch (type) {
+                        case 'Enemy': {
+                            const ew = (d.geo && d.geo.width !== undefined) ? d.geo.width : 0.8;
+                            const eh = (d.geo && d.geo.height !== undefined) ? d.geo.height : 0.8;
+                            const ed = (d.geo && d.geo.depth !== undefined) ? d.geo.depth : 0.8;
+                            geo = new THREE.BoxGeometry(ew, eh, ed); mat.color.setHex(0xff6600); break;
+                        }
+                        case 'Bonus': {
+                            const radius = uData.radius || 0.4;
+                            geo = new THREE.SphereGeometry(radius); mat.color.setHex(0xFFD700); break;
+                        }
+                        case 'Boss': geo = new THREE.BoxGeometry(1.5, 1.5, 1.5); mat.color.setHex(0xcc0000); break;
+                        case 'Catcher': geo = new THREE.CylinderGeometry(0.5, 0.5, 0.2); mat.color.setHex(0x5500aa); break;
+                        case 'catcher_target':
+                            geo = new THREE.PlaneGeometry(1, 1);
+                            geo.rotateX(-Math.PI / 2);
+                            mat.color.setHex(0xaa00ff);
+                            mat.side = THREE.DoubleSide;
+                            break;
+                        case 'Spawn': geo = new THREE.ConeGeometry(0.5, 1, 4); mat.color.setHex(0xaa5500); break;
+                        case 'Goal': geo = new THREE.BoxGeometry(1, 0.1, 1); mat.color.setHex(0xD4AF37); break;
+                        case 'PowerUp':
+                            geo = new THREE.BoxGeometry(0.5, 0.5, 0.5);
+                            mat.color.setHex(0x00cccc);
+                            uData.isAsset = true;
+                            break;
+                        case 'Collision': {
+                            const cw = (d.geo && d.geo.width !== undefined) ? d.geo.width : 1.0;
+                            const ch = (d.geo && d.geo.height !== undefined) ? d.geo.height : 1.0;
+                            const cd = (d.geo && d.geo.depth !== undefined) ? d.geo.depth : 1.0;
+                            geo = new THREE.BoxGeometry(cw, ch, cd);
+                            mat = new THREE.MeshBasicMaterial({ color: 0x22ff22, wireframe: true, transparent: true, opacity: 0.3 }); break;
+                        }
+                        case 'PointLight': geo = new THREE.SphereGeometry(0.2); mat = new THREE.MeshBasicMaterial({ color: 0xffff00, wireframe: true }); isLight = true; break;
+                        case 'SpotLight': geo = new THREE.ConeGeometry(0.2, 0.5, 4); mat = new THREE.MeshBasicMaterial({ color: 0xffffaa, wireframe: true }); isLight = true; break;
+                        case 'DirectionalLight': geo = new THREE.BoxGeometry(0.4, 0.4, 0.4); mat = new THREE.MeshBasicMaterial({ color: 0xffffff, wireframe: true }); isLight = true; break;
+                        default: geo = new THREE.BoxGeometry(0.5, 0.5, 0.5);
+                    }
+                    obj = new THREE.Mesh(geo, mat);
+                    if (isLight) {
+                        obj.castShadow = false; obj.receiveShadow = false;
+                        let lightObj;
+                        const shadowsEnabled = this.app.sceneManager?.renderer?.shadowMap?.enabled || false;
+                        const lColor = uData.color !== undefined ? uData.color : mat.color.getHex();
+                        const lIntensity = uData.intensity !== undefined ? uData.intensity : 1.0;
+                        const lDistance = uData.distance !== undefined ? uData.distance : 10;
+                        if (type === 'PointLight') { lightObj = new THREE.PointLight(lColor, lIntensity, lDistance); }
+                        else if (type === 'SpotLight') { const lAngle = uData.angle !== undefined ? uData.angle : Math.PI / 4; const lPenumbra = uData.penumbra !== undefined ? uData.penumbra : 0.5; lightObj = new THREE.SpotLight(lColor, lIntensity, lDistance, lAngle, lPenumbra, 1); lightObj.target.position.set(0, -1, 0); obj.add(lightObj.target); }
+                        else if (type === 'DirectionalLight') { lightObj = new THREE.DirectionalLight(lColor, lIntensity); }
+                        if (lightObj) {
+                            lightObj.name = 'light_source';
+                            lightObj.castShadow = uData.castShadow !== undefined ? uData.castShadow && shadowsEnabled : shadowsEnabled;
+                            lightObj.shadow.mapSize.width = uData.shadowRes !== undefined ? uData.shadowRes : 1024;
+                            lightObj.shadow.mapSize.height = uData.shadowRes !== undefined ? uData.shadowRes : 1024;
+                            lightObj.shadow.bias = uData.shadowBias !== undefined ? uData.shadowBias : -0.001;
+                            lightObj.shadow.normalBias = uData.shadowNormalBias !== undefined ? uData.shadowNormalBias : 0;
+                            lightObj.shadow.radius = uData.shadowRadius !== undefined ? uData.shadowRadius : 1;
+                            lightObj.shadow.camera.near = uData.shadowCamNear !== undefined ? uData.shadowCamNear : 0.5;
+                            lightObj.shadow.camera.far = uData.shadowCamFar !== undefined ? uData.shadowCamFar : 500;
+                            if (type === 'DirectionalLight') { const cSize = uData.shadowCamSize || 10; lightObj.shadow.camera.left = -cSize; lightObj.shadow.camera.right = cSize; lightObj.shadow.camera.top = cSize; lightObj.shadow.camera.bottom = -cSize; }
+                            obj.add(lightObj);
+                        }
+                    }
+                }
+            } else obj = new THREE.Mesh(new THREE.BoxGeometry(), new THREE.MeshStandardMaterial({ color: 0x888888 }));
+
+            obj.name = d.name; obj.position.fromArray(d.p); obj.rotation.fromArray(d.r); obj.scale.fromArray(d.s);
+            obj.userData = uData;
+            if (d.modelOffset) obj.userData.modelOffset = d.modelOffset;
+            if (d.modelRotation) obj.userData.modelRotation = d.modelRotation;
+            if (d.modelScale) obj.userData.modelScale = d.modelScale;
+
+            if (obj.userData.type === 'Enemy') { const arrow = new THREE.ArrowHelper(new THREE.Vector3(0, 0, 1), new THREE.Vector3(0, 0, 0), 1.5, 0xff0000); arrow.name = 'ArrowHelper'; obj.add(arrow); }
+            else if (obj.userData.type === 'catcher_target') { const arrow = new THREE.ArrowHelper(new THREE.Vector3(0, 0, 1), new THREE.Vector3(0, 0, 0), 1.5, 0xffff00); arrow.name = 'ArrowHelper'; obj.add(arrow); }
+
+            this.objects.push(obj); this.app.sceneManager.scene.add(obj);
+
+            if (obj.userData.type === 'SplatEnv' && obj.userData.splatSource) {
+                this.reloadSplat(obj);
+            } else if (obj.userData.glbSource) {
+                promises.push(this.reloadModel(obj, obj.userData.glbSource, (m) => {
+                    if (this.selected === obj && obj.userData.isPlayer) this.app.ui.generateThumbnail(m, 'glb-preview-img');
+                }));
+            }
+        });
+        this.updateSplatMode();
+        return promises;
+    }
+
+    saveProject() {
+        // Sync current active level before saving project file
+        if (this.currentLevelIndex >= 0) {
+            this.updateLevel(this.currentLevelIndex);
+        }
+
+        const data = {
+            scene: this.objects.map(o => {
+                const objData = { name: o.name, p: o.position.toArray(), r: o.rotation.toArray(), s: o.scale.toArray(), userData: o.userData };
+                const model = o.getObjectByName('model');
+                if (model) {
+                    objData.modelOffset = model.position.toArray();
+                    objData.modelRotation = model.rotation.toArray();
+                    objData.modelScale = model.scale.toArray();
+                }
+                if (o.geometry?.parameters) {
+                    const p = o.geometry.parameters;
+                    objData.geo = { radius: p.radius, height: p.height !== undefined ? p.height : p.length, width: p.width, depth: p.depth };
+                }
+                return objData;
+            }),
+            library: this.app.ui.library || [],
+            levels: this.levels || [],
+            gameTitle: this.gameTitle || 'Web 3D Game',
+            gameSplashSubtitle: this.gameSplashSubtitle || '3D Editor Engine',
+            gameSplashImage: this.gameSplashImage || null,
+            gameSplashPromptBg: this.gameSplashPromptBg || 'rgba(255,255,255,0.1)',
+            gameSplashPromptColor: this.gameSplashPromptColor || '#ffffff',
+            gameSplashMusic: this.gameSplashMusic || null,
+            gameSplashMusicFilename: this.gameSplashMusicFilename || '',
+            currentLevelIndex: this.currentLevelIndex,
+            startingLevelIndex: this.startingLevelIndex,
+            gameEndTitle: this.gameEndTitle || '',
+            gameEndSubtitle: this.gameEndSubtitle || '',
+            gameEndImage: this.gameEndImage || null,
+            gameEndVideo: this.gameEndVideo || null,
+            gameEndVideoAspect: this.gameEndVideoAspect || 'cover',
+            gameEndMusic: this.gameEndMusic || null,
+            gameEndMusicFilename: this.gameEndMusicFilename || ''
         };
         const a = document.createElement('a');
         a.href = URL.createObjectURL(new Blob([JSON.stringify(data)], { type: 'application/json' }));
@@ -766,108 +1020,44 @@ export class Editor {
 
     loadProject(file) {
         const reader = new FileReader();
-        reader.onload = (e) => {
+        reader.onload = async (e) => {
             try {
                 const rootData = JSON.parse(e.target.result);
                 const sceneData = rootData.scene || rootData;
                 this.clearScene();
                 if (this.app.ui.restoreLibrary) this.app.ui.restoreLibrary(rootData.library || []);
 
+                // Restore levels
+                this.levels = rootData.levels || [];
+                this.currentLevelIndex = (rootData.currentLevelIndex !== undefined) ? rootData.currentLevelIndex : -1;
+                this.gameTitle = rootData.gameTitle || 'Web 3D Game';
+                this.gameSplashSubtitle = rootData.gameSplashSubtitle || '3D Editor Engine';
+                this.gameSplashImage = rootData.gameSplashImage || null;
+                this.gameSplashPromptBg = rootData.gameSplashPromptBg || 'rgba(255,255,255,0.1)';
+                this.gameSplashPromptColor = rootData.gameSplashPromptColor || '#ffffff';
+                this.gameSplashMusic = rootData.gameSplashMusic || null;
+                this.gameSplashMusicFilename = rootData.gameSplashMusicFilename || '';
+                this.startingLevelIndex = rootData.startingLevelIndex !== undefined ? rootData.startingLevelIndex : 0;
+                this.gameEndTitle = rootData.gameEndTitle || '';
+                this.gameEndSubtitle = rootData.gameEndSubtitle || '';
+                this.gameEndImage = rootData.gameEndImage || null;
+                this.gameEndVideo = rootData.gameEndVideo || null;
+                this.gameEndVideoAspect = rootData.gameEndVideoAspect || 'cover';
+                this.gameEndMusic = rootData.gameEndMusic || null;
+                this.gameEndMusicFilename = rootData.gameEndMusicFilename || '';
+                if (this.app.ui.renderLevelList) this.app.ui.renderLevelList();
+
                 // Ensure Player is always the first asset in the library
                 const playerExists = this.app.ui.library.find(item => item.type === 'Player');
                 if (!playerExists) {
                     this.app.ui.createAssetCard('Player', 'Player', null, true);
-                    // Move to front if needed (createAssetCard appends, so we might need to re-sort or just trust the manual call first)
                     const last = this.app.ui.library.pop();
                     this.app.ui.library.unshift(last);
                     this.app.ui.restoreLibrary(this.app.ui.library);
                 }
 
-                sceneData.forEach((d) => {
-                    let obj;
-                    const uData = d.userData || {};
-                    if (!uData.isPlayer && (uData.type === 'Player' || uData.typology)) uData.isPlayer = true;
-                    if (!uData.isCamera && d.name.includes("Camera")) uData.isCamera = true;
-
-                    if (uData.isPlayer) {
-                        const r = d.geo?.radius || 0.5, h = d.geo?.height || 1.0;
-                        obj = new THREE.Mesh(new THREE.CapsuleGeometry(r, h, 4, 8), new THREE.MeshStandardMaterial({ color: 0x4caf50, transparent: true, opacity: 0.5, wireframe: true }));
-                    } else if (uData.isCamera) {
-                        obj = new THREE.Mesh(new THREE.BoxGeometry(0.5, 0.5, 1), new THREE.MeshBasicMaterial({ color: 0x555555, wireframe: true }));
-                        obj.add(new THREE.PerspectiveCamera(uData.fov || 60, 1, 0.1, 100));
-                    } else if (uData.isAsset) {
-                        const type = uData.type;
-                        if (type === 'Model') {
-                            obj = new THREE.Group();
-                        } else {
-                            let geo, mat = new THREE.MeshStandardMaterial({ color: 0x888888, wireframe: true, transparent: true, opacity: 0.5 });
-                            switch (type) {
-                                case 'Enemy':
-                                    const ew = (d.geo && d.geo.width !== undefined) ? d.geo.width : 0.8;
-                                    const eh = (d.geo && d.geo.height !== undefined) ? d.geo.height : 0.8;
-                                    const ed = (d.geo && d.geo.depth !== undefined) ? d.geo.depth : 0.8;
-                                    geo = new THREE.BoxGeometry(ew, eh, ed);
-                                    mat.color.setHex(0xff6600);
-                                    break;
-                                case 'Bonus':
-                                    const radius = uData.radius || 0.4;
-                                    geo = new THREE.SphereGeometry(radius);
-                                    mat.color.setHex(0xFFD700);
-                                    break;
-                                case 'Boss': geo = new THREE.BoxGeometry(1.5, 1.5, 1.5); mat.color.setHex(0xcc0000); break;
-                                case 'Catcher': geo = new THREE.CylinderGeometry(0.5, 0.5, 0.2); mat.color.setHex(0x5500aa); break;
-                                case 'catcher_target':
-                                    geo = new THREE.PlaneGeometry(1, 1);
-                                    geo.rotateX(-Math.PI / 2);
-                                    mat.color.setHex(0xaa00ff);
-                                    mat.side = THREE.DoubleSide;
-                                    break;
-                                case 'Spawn': geo = new THREE.ConeGeometry(0.5, 1, 4); mat.color.setHex(0xaa5500); break;
-                                case 'Goal': geo = new THREE.BoxGeometry(1, 0.1, 1); mat.color.setHex(0xD4AF37); break;
-                                case 'PowerUp':
-                                    geo = new THREE.BoxGeometry(0.5, 0.5, 0.5);
-                                    mat.color.setHex(0x00cccc);
-                                    uData.isAsset = true; // Ensure PowerUps are tracked as assets
-                                    break;
-                                case 'Collision':
-                                    const cw = (d.geo && d.geo.width !== undefined) ? d.geo.width : 1.0;
-                                    const ch = (d.geo && d.geo.height !== undefined) ? d.geo.height : 1.0;
-                                    const cd = (d.geo && d.geo.depth !== undefined) ? d.geo.depth : 1.0;
-                                    geo = new THREE.BoxGeometry(cw, ch, cd);
-                                    mat = new THREE.MeshBasicMaterial({ color: 0x22ff22, wireframe: true, transparent: true, opacity: 0.3 });
-                                    break;
-                                default: geo = new THREE.BoxGeometry(0.5, 0.5, 0.5);
-                            }
-                            obj = new THREE.Mesh(geo, mat);
-                        }
-                    } else obj = new THREE.Mesh(new THREE.BoxGeometry(), new THREE.MeshStandardMaterial({ color: 0x888888 }));
-
-                    obj.name = d.name; obj.position.fromArray(d.p); obj.rotation.fromArray(d.r); obj.scale.fromArray(d.s);
-                    obj.userData = uData;
-
-                    if (d.modelOffset) obj.userData.modelOffset = d.modelOffset;
-                    if (d.modelRotation) obj.userData.modelRotation = d.modelRotation;
-                    if (d.modelScale) obj.userData.modelScale = d.modelScale;
-
-                    // Restore Helpers
-                    if (obj.userData.type === 'Enemy') {
-                        const arrow = new THREE.ArrowHelper(new THREE.Vector3(0, 0, 1), new THREE.Vector3(0, 0, 0), 1.5, 0xff0000);
-                        arrow.name = 'ArrowHelper';
-                        obj.add(arrow);
-                    } else if (obj.userData.type === 'catcher_target') {
-                        const arrow = new THREE.ArrowHelper(new THREE.Vector3(0, 0, 1), new THREE.Vector3(0, 0, 0), 1.5, 0xffff00);
-                        arrow.name = 'ArrowHelper';
-                        obj.add(arrow);
-                    }
-
-                    this.objects.push(obj); this.app.sceneManager.scene.add(obj);
-
-                    if (obj.userData.glbSource) {
-                        this.reloadModel(obj, obj.userData.glbSource, (m) => {
-                            if (this.selected === obj && obj.userData.isPlayer) this.app.ui.generateThumbnail(m, 'glb-preview-img');
-                        });
-                    }
-                });
+                const promises = this._restoreSceneData(sceneData);
+                await Promise.all(promises);
 
                 this.app.ui.rebuildLibrary();
                 this.app.ui.update();
@@ -877,28 +1067,56 @@ export class Editor {
         reader.readAsText(file);
     }
 
+    _dataUrlToBlobUrl(dataUrl) {
+        const arr = dataUrl.split(',');
+        const mime = arr[0].match(/:(.*?);/)[1];
+        const bstr = atob(arr[1]);
+        const n = bstr.length;
+        const u8arr = new Uint8Array(n);
+        for (let i = 0; i < n; i++) u8arr[i] = bstr.charCodeAt(i);
+        return URL.createObjectURL(new Blob([u8arr], { type: mime }));
+    }
+
+    reloadSplat(obj) {
+        if (!obj || !obj.userData.splatSource) return;
+        const old = obj.getObjectByName('splatMesh');
+        if (old) obj.remove(old);
+        try {
+            const blobUrl = this._dataUrlToBlobUrl(obj.userData.splatSource);
+            const sm = new SplatMesh({
+                url: blobUrl,
+                renderer: this.app.sceneManager.renderer,
+                camera: this.app.sceneManager.camera
+            });
+            sm.name = 'splatMesh';
+            sm.quaternion.set(1, 0, 0, 0);
+            sm.frustumCulled = false;
+            obj.add(sm);
+            console.log('[SplatEnv] reloadSplat OK');
+        } catch (err) {
+            console.warn('[SplatEnv] reloadSplat failed:', err);
+        }
+    }
+
     updateMaterialSettings(obj) {
         if (!obj) return;
-        const alphaMode = obj.userData.alphaMode || 'mask'; // mask, blend, opaque
+        const alphaMode = obj.userData.alphaMode || 'mask';
         const alphaTest = obj.userData.alphaTest !== undefined ? obj.userData.alphaTest : 0.5;
         const doubleSide = obj.userData.doubleSide !== undefined ? obj.userData.doubleSide : true;
 
         obj.traverse((child) => {
             if (child.isMesh && child.material) {
                 child.material.transparent = (alphaMode !== 'opaque');
-
                 if (alphaMode === 'mask') {
                     child.material.alphaTest = alphaTest;
                     child.material.depthWrite = true;
                 } else if (alphaMode === 'blend') {
                     child.material.alphaTest = 0;
-                    child.material.depthWrite = false; // Usually better for blending to avoid sorting artifacts, though can cause order issues
+                    child.material.depthWrite = false;
                 } else {
-                    // Opaque
                     child.material.alphaTest = 0;
                     child.material.depthWrite = true;
                 }
-
                 child.material.side = doubleSide ? THREE.DoubleSide : THREE.FrontSide;
                 child.material.needsUpdate = true;
             }
@@ -907,7 +1125,112 @@ export class Editor {
 
     clearScene() {
         this.select(null);
-        this.objects.forEach(o => this.app.sceneManager.scene.remove(o));
-        this.objects = []; this.history = []; this.hIndex = -1;
+        if (this.gizmo) this.gizmo.detach();
+
+        const toRemove = [];
+        this.app.sceneManager.scene.traverse((child) => {
+            if (child.userData && child.userData.isAsset) toRemove.push(child);
+            if (child.name === 'ArrowHelper') toRemove.push(child);
+        });
+        
+        toRemove.forEach(o => {
+            if (o.parent) o.parent.remove(o);
+        });
+
+        this.objects.forEach(o => {
+            if (o.parent) o.parent.remove(o);
+        });
+
+        if (this.linkGroup) this.linkGroup.clear();
+
+        this.objects = [];
+        this.history = [];
+        this.hIndex = -1;
+        this.app.ui.update();
+    }
+
+    async loadLevelByIndex(index) {
+        if (index < 0 || index >= this.levels.length) return;
+        this.currentLevelIndex = index;
+        const level = this.levels[index];
+        this.clearScene();
+
+        let sceneData = level.data;
+        try {
+            if (typeof sceneData === 'string') {
+                const parsed = JSON.parse(sceneData);
+                sceneData = parsed.scene || parsed;
+            } else if (sceneData && sceneData.scene) {
+                sceneData = sceneData.scene;
+            }
+        } catch (e) {
+            console.error("Malformed level data", e);
+            sceneData = [];
+        }
+
+        const promises = this._restoreSceneData(sceneData);
+        await Promise.all(promises);
+
+        if (this.app.ui.renderLevelList) this.app.ui.renderLevelList();
+        this.app.ui.rebuildLibrary();
+        this.app.ui.update();
+        if (this.updateLinks) this.updateLinks();
+    }
+
+    /**
+     * Import an external JSON file as a new level (or multiple levels).
+     * Supports:
+     *   - Full project JSON (with .levels[] array) → imports all levels
+     *   - Single-scene JSON (with .scene[] or array root) → adds as one new level
+     */
+    importLevelFromJSON(file) {
+        const reader = new FileReader();
+        reader.onload = (e) => {
+            try {
+                const rootData = JSON.parse(e.target.result);
+
+                // Case 1: It's a full project with multiple levels
+                if (Array.isArray(rootData.levels) && rootData.levels.length > 0) {
+                    const baseName = file.name.replace(/\.json$/i, '');
+                    const startIdx = this.levels.length;
+                    rootData.levels.forEach((lvl, i) => {
+                        this.levels.push({
+                            name: lvl.name || `${baseName} – ${i + 1}`,
+                            data: typeof lvl.data === 'string' ? lvl.data : JSON.stringify(lvl.data),
+                            music: lvl.music || '',
+                            musicFilename: lvl.musicFilename || ''
+                        });
+                    });
+                    if (this.app.ui.renderLevelList) this.app.ui.renderLevelList();
+                    console.log(`Importati ${rootData.levels.length} livelli da "${file.name}"`);
+                    return;
+                }
+
+                // Case 2: Single-scene JSON
+                const sceneData = rootData.scene || rootData;
+                const name = file.name.replace(/\.json$/i, '') || `Level ${this.levels.length + 1}`;
+
+                // Build the level payload: keep the library if present
+                const payload = {
+                    scene: Array.isArray(sceneData) ? sceneData : [],
+                    library: rootData.library || []
+                };
+
+                this.levels.push({
+                    name: name,
+                    data: JSON.stringify(payload),
+                    music: '',
+                    musicFilename: ''
+                });
+
+                if (this.app.ui.renderLevelList) this.app.ui.renderLevelList();
+                console.log(`Livello importato: "${name}" (${payload.scene.length} oggetti)`);
+
+            } catch (err) {
+                console.error('Errore nel parsing del JSON livello:', err);
+                alert('Errore: file JSON non valido.');
+            }
+        };
+        reader.readAsText(file);
     }
 }

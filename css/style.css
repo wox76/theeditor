@@ -204,3 +204,208 @@ body { margin: 0; padding: 0; width: 100vw; height: 100vh; background-color: var
     border-right: 15px solid transparent;
     border-top: 15px solid var(--accent);
 }
+
+/* ========== SPLASH SCREEN ========== */
+#game-splash {
+    position: absolute;
+    inset: 0;
+    z-index: 5000;
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    justify-content: center;
+    background: radial-gradient(ellipse at center, rgba(10,10,20,0.9) 0%, rgba(0,0,0,0.95) 100%);
+    background-size: cover;
+    background-position: center;
+    background-repeat: no-repeat;
+    backdrop-filter: blur(8px);
+    opacity: 1;
+    transition: opacity 0.4s ease;
+    pointer-events: all;
+}
+#game-splash.splash-fade-out {
+    opacity: 0;
+    pointer-events: none;
+}
+.splash-title {
+    font-family: 'Arial Black', 'Segoe UI Black', sans-serif;
+    font-size: clamp(36px, 6vw, 80px);
+    font-weight: 900;
+    letter-spacing: 4px;
+    text-transform: uppercase;
+    background: linear-gradient(135deg, #eb7b33, #ffcc44, #eb7b33);
+    background-size: 200% auto;
+    -webkit-background-clip: text;
+    -webkit-text-fill-color: transparent;
+    background-clip: text;
+    animation: splashGradient 3s linear infinite;
+    text-shadow: none;
+    margin-bottom: 12px;
+    text-align: center;
+}
+@keyframes splashGradient {
+    0% { background-position: 0% center; }
+    100% { background-position: 200% center; }
+}
+.splash-subtitle {
+    font-size: 16px;
+    color: rgba(255,255,255,0.5);
+    letter-spacing: 3px;
+    text-transform: uppercase;
+    margin-bottom: 60px;
+    text-align: center;
+}
+.splash-level-name {
+    font-size: 14px;
+    color: var(--accent);
+    letter-spacing: 2px;
+    text-transform: uppercase;
+    margin-bottom: 50px;
+    text-align: center;
+    min-height: 20px;
+}
+.splash-prompt {
+    font-family: 'Segoe UI', sans-serif;
+    font-size: 16px;
+    color: #ffffff;
+    background: rgba(255,255,255,0.1);
+    padding: 12px 30px;
+    border-radius: 30px;
+    border: 1px solid rgba(255,255,255,0.3);
+    cursor: pointer;
+    transition: all 0.3s ease;
+    text-transform: uppercase;
+    letter-spacing: 1.5px;
+    animation: splashPulse 2s infinite;
+    margin-top: 20px;
+}
+@keyframes splashPulse {
+    0% { transform: scale(1); opacity: 1; }
+    50% { transform: scale(1.05); opacity: 0.7; }
+    100% { transform: scale(1); opacity: 1; }
+}
+.splash-decoration {
+    position: absolute;
+    width: 300px;
+    height: 300px;
+    border-radius: 50%;
+    background: radial-gradient(circle, rgba(235,123,51,0.15) 0%, transparent 70%);
+    animation: splashPulse 3s ease-in-out infinite;
+    pointer-events: none;
+}
+@keyframes splashPulse {
+    0%, 100% { transform: scale(1); opacity: 1; }
+    50% { transform: scale(1.2); opacity: 0.6; }
+}
+
+/* ========== LEVEL MANAGER ========== */
+.level-manager-header {
+    font-size: 11px;
+    font-weight: bold;
+    color: var(--accent);
+    text-transform: uppercase;
+    letter-spacing: 1px;
+    margin-bottom: 6px;
+    padding-bottom: 4px;
+    border-bottom: 1px solid #333;
+}
+.level-list-item {
+    display: flex;
+    align-items: center;
+    gap: 5px;
+    background: #252525;
+    border: 1px solid #383838;
+    border-radius: 4px;
+    padding: 5px 7px;
+    margin-bottom: 4px;
+    font-size: 11px;
+}
+.level-list-item:hover { border-color: var(--accent); }
+.level-list-item .level-name {
+    flex: 1;
+    color: #ddd;
+    white-space: nowrap;
+    overflow: hidden;
+    text-overflow: ellipsis;
+}
+.level-list-item .level-name.active-level { color: var(--accent); font-weight: bold; }
+.level-btn-sm {
+    background: #444;
+    border: 1px solid #555;
+    color: #ccc;
+    border-radius: 3px;
+    padding: 2px 6px;
+    font-size: 10px;
+    cursor: pointer;
+    flex-shrink: 0;
+}
+.level-btn-sm:hover { background: var(--accent); border-color: var(--accent); color: white; }
+.level-btn-sm.danger:hover { background: #cc2222; border-color: #cc2222; }
+
+/* ========== END SCREEN ========== */
+#game-endscreen {
+    position: absolute;
+    inset: 0;
+    z-index: 6000;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    background: #000;
+    opacity: 1;
+    transition: opacity 0.6s ease;
+    pointer-events: all;
+    overflow: hidden;
+}
+#game-endscreen.endscreen-fade-out {
+    opacity: 0;
+    pointer-events: none;
+}
+.endscreen-overlay {
+    position: relative;
+    z-index: 2;
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    justify-content: center;
+    text-align: center;
+    padding: 40px;
+    max-width: 80%;
+}
+.endscreen-title {
+    font-family: 'Arial Black', 'Segoe UI Black', sans-serif;
+    font-size: clamp(30px, 5vw, 72px);
+    font-weight: 900;
+    letter-spacing: 3px;
+    text-transform: uppercase;
+    background: linear-gradient(135deg, #cc55cc, #ffaaff, #cc55cc);
+    background-size: 200% auto;
+    -webkit-background-clip: text;
+    -webkit-text-fill-color: transparent;
+    background-clip: text;
+    animation: endGradient 3s linear infinite;
+    margin-bottom: 16px;
+}
+@keyframes endGradient {
+    0% { background-position: 0% center; }
+    100% { background-position: 200% center; }
+}
+.endscreen-subtitle {
+    font-size: 18px;
+    color: rgba(255,255,255,0.7);
+    letter-spacing: 2px;
+    margin-bottom: 50px;
+    min-height: 22px;
+}
+.endscreen-prompt {
+    position: absolute;
+    bottom: 32px;
+    left: 50%;
+    transform: translateX(-50%);
+    z-index: 3;
+    font-size: 14px;
+    color: rgba(255,255,255,0.6);
+    letter-spacing: 1px;
+    white-space: nowrap;
+    animation: splashPulse 2s infinite;
+    pointer-events: none;
+}
