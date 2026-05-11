@@ -10,3 +10,8 @@ Thumbs.db
 
 # Temp
 temp/
+
+# Assets and Objects
+assets/
+redbob/
+
