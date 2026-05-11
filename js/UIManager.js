@@ -297,6 +297,7 @@ export class UIManager {
             if (file) {
                 const reader = new FileReader();
                 reader.onload = (ev) => {
+                    const dataUrl = ev.target.result;
                     const container = document.getElementById('glb-preview-container'), nameInput = document.getElementById('glb-filename');
                     if (container) container.style.display = 'flex';
                     if (nameInput) nameInput.value = file.name;
