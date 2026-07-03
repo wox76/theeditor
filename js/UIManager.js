@@ -278,10 +278,267 @@ export class UIManager {
             }
         };
 
+        // Fallback silenzioso: project-load-input carica file JSON locali
         document.getElementById('project-load-input').onchange = (e) => {
             const file = e.target.files[0];
             if (file) { this.app.editor.loadProject(file); e.target.value = ''; }
         };
+
+        // ========== PROJECT SELECTOR MODAL ==========
+        const btnLoadProject = document.getElementById('btn-load-project');
+        const projectModal   = document.getElementById('project-selector-modal');
+        const projectGrid    = document.getElementById('project-grid');
+        const btnCloseModal  = document.getElementById('btn-close-project-selector');
+        const btnNewProject  = document.getElementById('btn-new-project');
+
+        const openProjectModal = async () => {
+            projectGrid.innerHTML = '<div style="color:#666;font-size:13px;grid-column:1/-1;text-align:center;padding:40px;">⏳ Caricamento progetti...</div>';
+            projectModal.classList.remove('hidden');
+
+            try {
+                const res = await fetch('/api/list-projects');
+                const projects = await res.json();
+                projectGrid.innerHTML = '';
+
+                if (!Array.isArray(projects) || projects.length === 0) {
+                    projectGrid.innerHTML = '<div style="color:#666;font-size:13px;grid-column:1/-1;text-align:center;padding:40px;">📭 Nessun progetto trovato.<br><span style=\'color:#555;\'>Clicca "+ Nuovo Progetto" per crearne uno.</span></div>';
+                    return;
+                }
+
+                projects.forEach(proj => {
+                    // --- CARD WRAPPER ---
+                    const wrapper = document.createElement('div');
+                    wrapper.style.cssText = 'display:flex;flex-direction:column;background:rgba(255,255,255,0.04);border-radius:10px;border:1px solid rgba(255,255,255,0.08);overflow:hidden;transition:border-color 0.2s;';
+                    wrapper.onmouseover = () => { wrapper.style.borderColor = 'rgba(235,123,51,0.5)'; };
+                    wrapper.onmouseout  = () => { wrapper.style.borderColor = 'rgba(255,255,255,0.08)'; };
+
+                    // --- THUMBNAIL ---
+                    const thumb = document.createElement('div');
+                    thumb.style.cssText = `position:relative;aspect-ratio:16/9;background:${proj.splashImage ? `url(${proj.splashImage}) center/cover` : 'linear-gradient(135deg,#1e293b,#0f172a)'};cursor:pointer;overflow:hidden;`;
+
+                    // Overlay gradiente con titolo
+                    const overlay = document.createElement('div');
+                    overlay.style.cssText = 'position:absolute;inset:0;background:linear-gradient(to top,rgba(0,0,0,0.85) 30%,transparent);display:flex;flex-direction:column;justify-content:flex-end;padding:10px;';
+                    const titleEl = document.createElement('div');
+                    titleEl.style.cssText = 'font-weight:700;font-size:13px;color:#fff;text-shadow:0 2px 4px rgba(0,0,0,0.9);';
+                    titleEl.textContent = proj.title || proj.name;
+                    const subtEl = document.createElement('div');
+                    subtEl.style.cssText = 'font-size:10px;color:rgba(255,255,255,0.5);margin-top:2px;';
+                    subtEl.textContent = proj.splashSubtitle || proj.name;
+                    overlay.appendChild(titleEl);
+                    overlay.appendChild(subtEl);
+                    thumb.appendChild(overlay);
+
+                    // Pulsante elimina (cestino)
+                    const btnDel = document.createElement('button');
+                    btnDel.innerHTML = '🗑️';
+                    btnDel.title = 'Elimina Progetto';
+                    btnDel.style.cssText = 'position:absolute;top:8px;right:8px;z-index:10;border:none;background:rgba(239,68,68,0.2);border:1px solid rgba(239,68,68,0.4);color:#ef4444;width:28px;height:28px;border-radius:6px;cursor:pointer;font-size:12px;display:flex;align-items:center;justify-content:center;transition:background 0.2s;';
+                    btnDel.onmouseover = () => { btnDel.style.background = 'rgba(239,68,68,0.6)'; };
+                    btnDel.onmouseout  = () => { btnDel.style.background = 'rgba(239,68,68,0.2)'; };
+                    btnDel.onclick = async (e) => {
+                        e.stopPropagation();
+                        if (!confirm(`Eliminare definitivamente il progetto "${proj.name}"?`)) return;
+                        try {
+                            const r = await fetch('/api/delete-project', { method:'POST', headers:{'Content-Type':'application/json'}, body: JSON.stringify({ projectName: proj.name }) });
+                            const d = await r.json();
+                            if (d.success) { wrapper.remove(); }
+                            else { alert('Errore eliminazione: ' + (d.error || 'sconosciuto')); }
+                        } catch(err) { alert('Impossibile contattare il server.'); }
+                    };
+                    thumb.appendChild(btnDel);
+
+                    // Click su thumbnail = carica progetto completo
+                    const loadProjectData = async () => {
+                        projectModal.classList.add('hidden');
+                        try {
+                            const projRes = await fetch(`./projects/${proj.name}/project.json?t=${Date.now()}`);
+                            if (!projRes.ok) throw new Error('Impossibile scaricare project.json');
+                            const projData = await projRes.json();
+
+                            this.app.editor.projectName = proj.name;
+                            this.app.editor.clearScene();
+                            this.app.editor.levels = (projData.levels || []).map(lvl => ({
+                                name: lvl.name || 'Level',
+                                music: lvl.music || '',
+                                musicFilename: lvl.musicFilename || '',
+                                isExternal: !!lvl.isExternal,
+                                externalFilename: lvl.externalFilename || '',
+                                fileHandle: null,
+                                data: (lvl.data === null || lvl.data === undefined) ? null : (typeof lvl.data === 'string' ? lvl.data : JSON.stringify(lvl.data || {}))
+                            }));
+                            this.app.editor.currentLevelIndex = -1;
+                            this.app.editor.gameTitle        = projData.gameTitle || proj.title;
+                            this.app.editor.gameSplashSubtitle = projData.gameSplashSubtitle || '';
+                            this.app.editor.gameSplashImage  = projData.gameSplashImage || null;
+                            this.app.editor.gameSplashMusic  = projData.gameSplashMusic || null;
+                            this.app.editor.gameSplashMusicFilename = projData.gameSplashMusicFilename || '';
+                            this.app.editor.startingLevelIndex = projData.startingLevelIndex ?? 0;
+                            this.app.editor.gameEndTitle      = projData.gameEndTitle || '';
+                            this.app.editor.gameEndSubtitle   = projData.gameEndSubtitle || '';
+                            this.app.editor.gameEndImage      = projData.gameEndImage || null;
+                            this.app.editor.gameEndVideo      = projData.gameEndVideo || null;
+                            this.app.editor.gameEndMusic      = projData.gameEndMusic || null;
+
+                            if (this.restoreLibrary) this.restoreLibrary(projData.library || []);
+                            if (this.renderLevelList) this.renderLevelList();
+
+                            const startIdx = this.app.editor.startingLevelIndex;
+                            if (this.app.editor.levels.length > 0) {
+                                await this.app.editor.loadLevelByIndex(startIdx);
+                            }
+                            this.update();
+                        } catch(err) {
+                            console.error('[ProjectSelector] Errore caricamento progetto:', err);
+                            if (this.showModalAlert) this.showModalAlert('Errore', `⚠️ Impossibile caricare il progetto "${proj.name}".\n${err.message}`);
+                        }
+                    };
+                    overlay.onclick = loadProjectData;
+
+                    thumb.appendChild(overlay);
+                    wrapper.appendChild(thumb);
+
+                    // --- BARRA PULSANTI (carica JSON singoli / crea JSON) ---
+                    const btnRow = document.createElement('div');
+                    btnRow.style.cssText = 'display:flex;border-top:1px solid rgba(255,255,255,0.05);';
+
+                    const btnToggle = document.createElement('button');
+                    btnToggle.textContent = '📄 Livelli JSON ▾';
+                    btnToggle.style.cssText = 'flex:1;padding:8px;font-size:10px;background:transparent;border:none;border-right:1px solid rgba(255,255,255,0.05);color:#aaa;cursor:pointer;';
+
+                    const btnCreate = document.createElement('button');
+                    btnCreate.textContent = '➕ Crea JSON';
+                    btnCreate.style.cssText = 'flex:1;padding:8px;font-size:10px;background:transparent;border:none;color:var(--accent);cursor:pointer;';
+
+                    btnRow.appendChild(btnToggle);
+                    btnRow.appendChild(btnCreate);
+                    wrapper.appendChild(btnRow);
+
+                    // --- LISTA LIVELLI JSON ---
+                    const lvlList = document.createElement('div');
+                    lvlList.style.cssText = 'display:none;flex-direction:column;gap:4px;padding:8px;background:rgba(0,0,0,0.25);max-height:120px;overflow-y:auto;border-top:1px solid rgba(255,255,255,0.05);';
+
+                    if (proj.levels && proj.levels.length > 0) {
+                        proj.levels.forEach(lvlFile => {
+                            const btn = document.createElement('button');
+                            btn.textContent = `📂 ${lvlFile}`;
+                            btn.style.cssText = 'text-align:left;padding:5px 8px;font-size:10px;background:rgba(255,255,255,0.03);border:1px solid rgba(255,255,255,0.06);color:#ccc;border-radius:4px;cursor:pointer;';
+                            btn.onclick = async (e) => {
+                                e.stopPropagation();
+                                projectModal.classList.add('hidden');
+                                try {
+                                    this.app.editor.projectName = proj.name;
+                                    const lvlRes = await fetch(`./projects/${proj.name}/levels/${lvlFile}?t=${Date.now()}`);
+                                    if (!lvlRes.ok) throw new Error('File livello non trovato');
+                                    const lvlData = await lvlRes.json();
+                                    this.app.editor.clearScene();
+                                    if (this.restoreLibrary) this.restoreLibrary(lvlData.library || []);
+                                    const sceneArray = Array.isArray(lvlData.scene) ? lvlData.scene : (Array.isArray(lvlData) ? lvlData : []);
+                                    await Promise.all(this.app.editor._restoreSceneData(sceneArray));
+
+                                    // Restore rendering settings
+                                    if (lvlData.gamePBR !== undefined)     this.app.sceneManager.setPBROutput(lvlData.gamePBR);
+                                    if (lvlData.gameShadows !== undefined)  this.app.sceneManager.setShadows(lvlData.gameShadows);
+
+                                    // Sync level slot
+                                    const existingIdx = this.app.editor.levels.findIndex(l => l.externalFilename === lvlFile);
+                                    if (existingIdx >= 0) {
+                                        this.app.editor.currentLevelIndex = existingIdx;
+                                        this.app.editor.levels[existingIdx].data = JSON.stringify(lvlData);
+                                    } else {
+                                        this.app.editor.levels.push({ name: lvlFile.replace(/\.json$/i,''), isExternal:true, externalFilename:lvlFile, data:JSON.stringify(lvlData) });
+                                        this.app.editor.currentLevelIndex = this.app.editor.levels.length - 1;
+                                    }
+                                    if (this.renderLevelList) this.renderLevelList();
+                                    this.update();
+                                } catch(err) {
+                                    console.error('[ProjectSelector] Errore caricamento livello:', err);
+                                    if (this.showModalAlert) this.showModalAlert('Errore', `⚠️ Impossibile caricare "${lvlFile}".`);
+                                }
+                            };
+                            lvlList.appendChild(btn);
+                        });
+                    } else {
+                        const empty = document.createElement('div');
+                        empty.style.cssText = 'font-size:10px;color:#555;text-align:center;padding:6px;';
+                        empty.textContent = 'Nessun file JSON trovato.';
+                        lvlList.appendChild(empty);
+                    }
+                    wrapper.appendChild(lvlList);
+
+                    btnToggle.onclick = (e) => {
+                        e.stopPropagation();
+                        const open = lvlList.style.display === 'flex';
+                        lvlList.style.display = open ? 'none' : 'flex';
+                        btnToggle.textContent = open ? '📄 Livelli JSON ▾' : '📄 Livelli JSON ▴';
+                    };
+
+                    btnCreate.onclick = (e) => {
+                        e.stopPropagation();
+                        if (this.showModalPrompt) {
+                            this.showModalPrompt('Nuovo Livello JSON', `Nome del file JSON per il progetto "${proj.name}":`, '', async (name) => {
+                                if (!name) return;
+                                try {
+                                    const r = await fetch('/api/create-level', { method:'POST', headers:{'Content-Type':'application/json'}, body: JSON.stringify({ projectName:proj.name, levelName:name }) });
+                                    const d = await r.json();
+                                    if (d.success) {
+                                        if (this.showModalAlert) this.showModalAlert('Livello Creato', `✓ File "${d.filename}" creato nel progetto "${proj.name}".`);
+                                    } else { if (this.showModalAlert) this.showModalAlert('Errore', '⚠️ ' + (d.error || 'Errore sconosciuto')); }
+                                } catch(err) { if (this.showModalAlert) this.showModalAlert('Errore', '⚠️ Impossibile contattare il server.'); }
+                            });
+                        }
+                    };
+
+                    projectGrid.appendChild(wrapper);
+                });
+
+            } catch(err) {
+                console.error('[ProjectSelector] Errore fetch lista progetti:', err);
+                projectGrid.innerHTML = '<div style="color:#ef4444;font-size:13px;grid-column:1/-1;text-align:center;padding:40px;">⚠️ Impossibile caricare la lista progetti.<br><span style=\'color:#555;font-size:11px;\'>Assicurati che server.js sia attivo su localhost:8000</span></div>';
+            }
+        };
+
+        if (btnLoadProject) btnLoadProject.onclick = openProjectModal;
+
+        if (btnCloseModal) btnCloseModal.onclick = () => projectModal.classList.add('hidden');
+
+        // Chiudi modal su click fuori dalla finestra
+        projectModal.addEventListener('click', (e) => {
+            if (e.target === projectModal) projectModal.classList.add('hidden');
+        });
+
+        // Chiudi modal con ESC
+        window.addEventListener('keydown', (e) => {
+            if (e.key === 'Escape' && !projectModal.classList.contains('hidden')) {
+                projectModal.classList.add('hidden');
+            }
+        });
+
+        // Crea nuovo progetto
+        if (btnNewProject) {
+            btnNewProject.onclick = (e) => {
+                e.stopPropagation();
+                if (this.showModalPrompt) {
+                    this.showModalPrompt('Nuovo Progetto', 'Nome del progetto (solo lettere, numeri, - e _):', '', async (name) => {
+                        if (!name) return;
+                        const sanitized = name.trim().replace(/\s+/g, '_');
+                        try {
+                            const r = await fetch('/api/create-project', { method:'POST', headers:{'Content-Type':'application/json'}, body: JSON.stringify({ name: sanitized }) });
+                            const d = await r.json();
+                            if (d.success) {
+                                this.app.editor.projectName = d.projectName;
+                                projectModal.classList.add('hidden');
+                                if (this.showModalAlert) this.showModalAlert('Progetto Creato', `✓ Progetto "${d.projectName}" creato con successo!`);
+                            } else {
+                                if (this.showModalAlert) this.showModalAlert('Errore', '⚠️ ' + (d.error || 'Nome non valido'));
+                            }
+                        } catch(err) {
+                            if (this.showModalAlert) this.showModalAlert('Errore Connessione', '⚠️ Impossibile comunicare con il server.\nAssicurati che server.js sia in esecuzione.');
+                        }
+                    });
+                }
+            };
+        }
     }
 
     setActiveTool(id) {

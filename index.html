@@ -23,6 +23,7 @@
     <input type="file" id="glb-input" accept=".glb,.gltf" style="display: none;">
     <input type="file" id="splat-input" accept=".splat,.ply,.spz,.ksplat" style="display: none;">
     <input type="file" id="project-load-input" accept=".json" style="display: none;">
+    <input type="file" id="level-load-input" accept=".json" style="display: none;">
 
     <div id="app-container">
         <div id="workspace">
@@ -30,7 +31,7 @@
                 <div class="panel-header">Toolbox</div>
                 <div class="panel-content">
                     <div class="action-row">
-                        <button class="action-btn" onclick="document.getElementById('project-load-input').click()"><svg
+                        <button class="action-btn" id="btn-load-project" title="Apri Progetto"><svg
                                 viewBox="0 0 24 24">
                                 <path
                                     d="M10 4H4c-1.1 0-1.99.9-1.99 2L2 18c0 1.1.9 2 2 2h16c1.1 0 2-.9 2-2V8c0-1.1-.9-2-2-2h-8l-2-2z" />
@@ -997,6 +998,83 @@
                 <div class="asset-menu-item" data-type="PowerUp">⚡ Aggiungi PowerUp</div>
             </div>
         </footer>
+    </div>
+
+    <!-- ========== PROJECT SELECTOR MODAL ========== -->
+    <div id="project-selector-modal" class="hidden" style="
+        position: fixed;
+        inset: 0;
+        z-index: 9000;
+        background: rgba(0,0,0,0.85);
+        backdrop-filter: blur(12px);
+        display: flex;
+        flex-direction: column;
+        align-items: center;
+        justify-content: flex-start;
+        padding: 40px 20px 20px;
+        overflow-y: auto;
+    ">
+        <div style="
+            width: 100%;
+            max-width: 900px;
+            background: linear-gradient(160deg, #1e2030, #161820);
+            border: 1px solid rgba(255,255,255,0.1);
+            border-radius: 16px;
+            overflow: hidden;
+            box-shadow: 0 40px 80px rgba(0,0,0,0.8);
+        ">
+            <!-- Header -->
+            <div style="
+                display: flex;
+                align-items: center;
+                justify-content: space-between;
+                padding: 20px 24px;
+                border-bottom: 1px solid rgba(255,255,255,0.08);
+                background: rgba(255,255,255,0.03);
+            ">
+                <div>
+                    <div style="font-size: 18px; font-weight: 700; color: #fff; letter-spacing: 0.5px;">📂 Apri Progetto</div>
+                    <div style="font-size: 12px; color: rgba(255,255,255,0.4); margin-top: 3px;">Seleziona un progetto salvato sul server</div>
+                </div>
+                <div style="display:flex; gap:10px; align-items:center;">
+                    <button id="btn-new-project" title="Crea Nuovo Progetto" style="
+                        background: rgba(235,123,51,0.15);
+                        border: 1px solid rgba(235,123,51,0.4);
+                        color: #eb7b33;
+                        padding: 8px 16px;
+                        border-radius: 8px;
+                        cursor: pointer;
+                        font-size: 12px;
+                        font-weight: 600;
+                        transition: all 0.2s;
+                    ">＋ Nuovo Progetto</button>
+                    <button id="btn-close-project-selector" style="
+                        background: rgba(255,255,255,0.05);
+                        border: 1px solid rgba(255,255,255,0.15);
+                        color: rgba(255,255,255,0.6);
+                        width: 36px;
+                        height: 36px;
+                        border-radius: 8px;
+                        cursor: pointer;
+                        font-size: 18px;
+                        display: flex;
+                        align-items: center;
+                        justify-content: center;
+                        transition: all 0.2s;
+                    ">✕</button>
+                </div>
+            </div>
+            <!-- Grid Projects -->
+            <div id="project-grid" style="
+                display: grid;
+                grid-template-columns: repeat(auto-fill, minmax(220px, 1fr));
+                gap: 16px;
+                padding: 24px;
+                min-height: 200px;
+            ">
+                <div style="color:#666; font-size:13px; grid-column:1/-1; text-align:center; padding:40px;">Caricamento...</div>
+            </div>
+        </div>
     </div>
 
     <script type="module" src="js/App.js"></script>

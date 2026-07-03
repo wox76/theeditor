@@ -15,3 +15,14 @@ temp/
 assets/
 redbob/
 
+# File grandi / binari (non versionare)
+level01.json
+*.è json
+ollama
+ollama-linux-amd64.tar.zst
+ollama_bin/
+
+# Progetti locali (troppo grandi per GitHub)
+projects/
+
+level01.èjson
