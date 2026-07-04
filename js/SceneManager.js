@@ -178,8 +178,8 @@ export class SceneManager {
         this.useCyberpunk = enabled;
         if (this.cyberpunkPass) {
             this.cyberpunkPass.enabled = enabled;
-            if (aberration !== undefined) this.cyberpunkPass.uniforms['chromaticAberration'].value = aberration;
-            if (scanlines !== undefined) this.cyberpunkPass.uniforms['scanlinesIntensity'].value = scanlines;
+            if (aberration !== undefined) this.cyberpunkPass.uniforms['aberrationAmount'].value = aberration;
+            if (scanlines !== undefined) this.cyberpunkPass.uniforms['scanlineIntensity'].value = scanlines;
         }
     }
 
