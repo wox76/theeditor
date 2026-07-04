@@ -188,6 +188,28 @@
                             
                             <!-- === TAB CONTENT: OBJECT === -->
                             <div class="prop-tab-content" data-tab="object" style="padding: 10px; overflow-y: auto; height: 100%;">
+                            <!-- Transform duplicate inside Object Properties -->
+                            <div style="background: rgba(255,255,255,0.02); padding: 8px; border-radius: 6px; border: 1px solid rgba(255,255,255,0.05); margin-bottom: 12px;">
+                                <div style="font-weight:bold; color:var(--accent); font-size:10px; margin-bottom:6px; text-transform:uppercase; letter-spacing:0.5px;">📐 Transform</div>
+                                <div class="transform-grid" style="margin-bottom:5px;">
+                                    <span class="transform-label">Pos</span>
+                                    <input id="obj-t-px" type="number" step="0.1" class="transform-input" placeholder="X">
+                                    <input id="obj-t-py" type="number" step="0.1" class="transform-input" placeholder="Y">
+                                    <input id="obj-t-pz" type="number" step="0.1" class="transform-input" placeholder="Z">
+                                </div>
+                                <div class="transform-grid" style="margin-bottom:5px;">
+                                    <span class="transform-label">Rot</span>
+                                    <input id="obj-t-rx" type="number" step="1" class="transform-input" placeholder="X">
+                                    <input id="obj-t-ry" type="number" step="1" class="transform-input" placeholder="Y">
+                                    <input id="obj-t-rz" type="number" step="1" class="transform-input" placeholder="Z">
+                                </div>
+                                <div class="transform-grid">
+                                    <span class="transform-label">Scale</span>
+                                    <input id="obj-t-sx" type="number" step="0.1" class="transform-input" placeholder="X">
+                                    <input id="obj-t-sy" type="number" step="0.1" class="transform-input" placeholder="Y">
+                                    <input id="obj-t-sz" type="number" step="0.1" class="transform-input" placeholder="Z">
+                                </div>
+                            </div>
                                 <div id="section-player" class="hidden">
                             <div class="prop-row">
                                 <span class="prop-label">Tipology</span>
