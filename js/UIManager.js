@@ -881,6 +881,74 @@ export class UIManager {
             };
         }
 
+        // Binding Post Processing (Pixel, Bloom, Cyberpunk)
+        const gamePixelEffect = document.getElementById('game-pixel-effect');
+        if (gamePixelEffect) gamePixelEffect.onchange = (e) => {
+            const size = parseInt(document.getElementById('game-pixel-size').value) || 6;
+            this.app.sceneManager.setPixelEffect(e.target.checked, size);
+            this.app.editor.gamePixelEffect = e.target.checked;
+        };
+
+        const gamePixelSize = document.getElementById('game-pixel-size');
+        if (gamePixelSize) gamePixelSize.onchange = (e) => {
+            const active = document.getElementById('game-pixel-effect').checked;
+            const val = parseInt(e.target.value) || 6;
+            this.app.sceneManager.setPixelEffect(active, val);
+            this.app.editor.gamePixelSize = val;
+        };
+
+        const gameBloomEffect = document.getElementById('game-bloom-effect');
+        if (gameBloomEffect) gameBloomEffect.onchange = (e) => {
+            const st = parseFloat(document.getElementById('game-bloom-strength').value) || 1.5;
+            const rd = parseFloat(document.getElementById('game-bloom-radius').value) || 0.4;
+            this.app.sceneManager.setBloomEffect(e.target.checked, st, rd);
+            this.app.editor.gameBloomEffect = e.target.checked;
+        };
+
+        const gameBloomStrength = document.getElementById('game-bloom-strength');
+        if (gameBloomStrength) gameBloomStrength.onchange = (e) => {
+            const active = document.getElementById('game-bloom-effect').checked;
+            const val = parseFloat(e.target.value) || 1.5;
+            const rd = parseFloat(document.getElementById('game-bloom-radius').value) || 0.4;
+            this.app.sceneManager.setBloomEffect(active, val, rd);
+            this.app.editor.gameBloomStrength = val;
+        };
+
+        const gameBloomRadius = document.getElementById('game-bloom-radius');
+        if (gameBloomRadius) gameBloomRadius.onchange = (e) => {
+            const active = document.getElementById('game-bloom-effect').checked;
+            const st = parseFloat(document.getElementById('game-bloom-strength').value) || 1.5;
+            const val = parseFloat(e.target.value) || 0.4;
+            this.app.sceneManager.setBloomEffect(active, st, val);
+            this.app.editor.gameBloomRadius = val;
+        };
+
+        const gameCyberpunkEffect = document.getElementById('game-cyberpunk-effect');
+        if (gameCyberpunkEffect) gameCyberpunkEffect.onchange = (e) => {
+            const ab = parseFloat(document.getElementById('game-cyberpunk-aberration').value) || 0.004;
+            const sc = parseFloat(document.getElementById('game-cyberpunk-scanlines').value) || 0.2;
+            this.app.sceneManager.setCyberpunkEffect(e.target.checked, ab, sc);
+            this.app.editor.gameCyberpunkEffect = e.target.checked;
+        };
+
+        const gameCyberpunkAberration = document.getElementById('game-cyberpunk-aberration');
+        if (gameCyberpunkAberration) gameCyberpunkAberration.onchange = (e) => {
+            const active = document.getElementById('game-cyberpunk-effect').checked;
+            const val = parseFloat(e.target.value) || 0.004;
+            const sc = parseFloat(document.getElementById('game-cyberpunk-scanlines').value) || 0.2;
+            this.app.sceneManager.setCyberpunkEffect(active, val, sc);
+            this.app.editor.gameCyberpunkAberration = val;
+        };
+
+        const gameCyberpunkScanlines = document.getElementById('game-cyberpunk-scanlines');
+        if (gameCyberpunkScanlines) gameCyberpunkScanlines.onchange = (e) => {
+            const active = document.getElementById('game-cyberpunk-effect').checked;
+            const ab = parseFloat(document.getElementById('game-cyberpunk-aberration').value) || 0.004;
+            const val = parseFloat(e.target.value) || 0.2;
+            this.app.sceneManager.setCyberpunkEffect(active, ab, val);
+            this.app.editor.gameCyberpunkScanlines = val;
+        };
+
         // Binding Viewport / Grid Settings
         const gridCenterColor = document.getElementById('grid-center-color');
         if (gridCenterColor) gridCenterColor.oninput = (e) => {

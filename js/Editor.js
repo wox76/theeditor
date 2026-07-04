@@ -59,6 +59,15 @@ export class Editor {
         this.gridDivisions = 40;
         this.gridCenterColor = '#555555';
         this.gridColor = '#888888';
+        // Primary Post Processing defaults
+        this.gamePixelEffect = false;
+        this.gamePixelSize = 6;
+        this.gameBloomEffect = false;
+        this.gameBloomStrength = 1.5;
+        this.gameBloomRadius = 0.4;
+        this.gameCyberpunkEffect = false;
+        this.gameCyberpunkAberration = 0.004;
+        this.gameCyberpunkScanlines = 0.2;
     }
 
     init() {
