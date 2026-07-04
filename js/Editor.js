@@ -170,11 +170,21 @@ export class Editor {
         this.app.sceneManager.setBloomEffect(this.gameBloomEffect, this.gameBloomStrength, this.gameBloomRadius);
         this.app.sceneManager.setCyberpunkEffect(this.gameCyberpunkEffect, this.gameCyberpunkAberration, this.gameCyberpunkScanlines);
 
-        // Se non ci sono oggetti in scena, crea la scena di default (griglia, camera, luci e player)
+        // Se non ci sono livelli inizializzati, crea il primo livello vuoto con il Player
         setTimeout(() => {
+            if (this.levels.length === 0) {
+                this.levels.push({
+                    name: "Level 1",
+                    data: "[]",
+                    music: "",
+                    musicFilename: ""
+                });
+                this.currentLevelIndex = 0;
+            }
             if (this.objects.length === 0) {
                 this.setupInitialDefaultScene();
             }
+            if (this.app.ui.renderLevelList) this.app.ui.renderLevelList();
         }, 150);
     }
 

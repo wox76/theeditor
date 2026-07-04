@@ -35,7 +35,7 @@ export class SceneManager {
     init() {
         // Scene Setup
         this.scene = new THREE.Scene();
-        this.scene.background = new THREE.Color(0x222222);
+        this.scene.background = new THREE.Color(0x3a3a3d);
 
         // Camera Setup
         this.camera = new THREE.PerspectiveCamera(75, 1, 0.1, 1000);
@@ -78,8 +78,8 @@ export class SceneManager {
         this.composer.addPass(this.outputPass);
 
         // Helpers
-        this.scene.add(new THREE.AmbientLight(0xffffff, 0.8));
-        this.dirLight = new THREE.DirectionalLight(0xffffff, 1);
+        this.scene.add(new THREE.AmbientLight(0xffffff, 1.5));
+        this.dirLight = new THREE.DirectionalLight(0xffffff, 1.5);
         this.dirLight.position.set(5, 10, 7);
         this.dirLight.castShadow = false;
         this.dirLight.shadow.mapSize.width = 2048;
