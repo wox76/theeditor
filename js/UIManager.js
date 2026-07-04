@@ -1076,15 +1076,7 @@ export class UIManager {
             };
         }
 
-        // Render Engine Bindings
-        const gamePBR = document.getElementById('game-pbr');
-        if (gamePBR) gamePBR.onchange = (e) => this.app.sceneManager.setPBROutput(e.target.checked);
-
-        const gameShadows = document.getElementById('game-shadows');
-        if (gameShadows) gameShadows.onchange = (e) => this.app.sceneManager.setShadows(e.target.checked);
-
-        const gameReflections = document.getElementById('game-reflections');
-        if (gameReflections) gameReflections.onchange = (e) => this.app.sceneManager.setReflections(e.target.checked);
+        // Render Engine Bindings (Managed via post-processing bindings above)
 
         if (pModelY && btnEditModel) {
             pModelY.oninput = (e) => {
