@@ -965,6 +965,8 @@ export class Editor {
         if (index < 0 || index >= this.levels.length) return;
         this.levels[index].data = this.getLevelSerializedData();
         if (this.app.ui.renderLevelList) this.app.ui.renderLevelList();
+        // Persisti fisicamente sul disco invocando il salvataggio del progetto
+        this.saveProject();
     }
 
     /** Load a level by index into the editor */
@@ -1153,9 +1155,95 @@ export class Editor {
             gameEndMusic: this.gameEndMusic || null,
             gameEndMusicFilename: this.gameEndMusicFilename || ''
         };
-        const a = document.createElement('a');
-        a.href = URL.createObjectURL(new Blob([JSON.stringify(data)], { type: 'application/json' }));
-        a.download = 'project.json'; a.click();
+
+        // Salva localmente sul server tramite chiamata API POST
+        const projectName = this.projectName || 'default_project';
+        const levelPayloads = this.levels.map((lvl, index) => {
+            // Se è il livello corrente, prendiamo gli oggetti in tempo reale
+            if (index === this.currentLevelIndex) {
+                return {
+                    filename: lvl.name.toLowerCase().replace(/\s+/g, '_') + '.json',
+                    data: JSON.stringify({
+                        scene: data.scene,
+                        library: data.library,
+                        gamePBR: data.gamePbrActive,
+                        gameShadows: data.gameShadows,
+                        gameReflections: data.gameReflections,
+                        gameExposure: data.gameExposure,
+                        gamePixelEffect: data.gamePixelEffect,
+                        gamePixelSize: data.gamePixelSize,
+                        gameBloomEffect: data.gameBloomEffect,
+                        gameBloomStrength: data.gameBloomStrength,
+                        gameBloomRadius: data.gameBloomRadius,
+                        gameCyberpunkEffect: data.gameCyberpunkEffect,
+                        gameCyberpunkAberration: data.gameCyberpunkAberration,
+                        gameCyberpunkScanlines: data.gameCyberpunkScanlines,
+                        gameSkyboxData: data.gameSkyboxData,
+                        gameSkyboxFilename: data.gameSkyboxFilename,
+                        gameSkyboxIntensity: data.gameSkyboxIntensity,
+                        gameSkyboxVisible: true
+                    }, null, 2)
+                };
+            }
+            return {
+                filename: lvl.name.toLowerCase().replace(/\s+/g, '_') + '.json',
+                data: lvl.data
+            };
+        });
+
+        fetch('/api/save-project', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({
+                projectName: projectName,
+                projectData: {
+                    projectName: projectName,
+                    gameTitle: data.gameTitle,
+                    gameSplashSubtitle: data.gameSplashSubtitle,
+                    gameSplashImage: data.gameSplashImage,
+                    gameSplashMusic: data.gameSplashMusic,
+                    gameSplashMusicFilename: data.gameSplashMusicFilename,
+                    startingLevelIndex: data.startingLevelIndex,
+                    currentLevelIndex: data.currentLevelIndex,
+                    gameEndTitle: data.gameEndTitle,
+                    gameEndSubtitle: data.gameEndSubtitle,
+                    gameEndImage: data.gameEndImage,
+                    gameEndVideo: data.gameEndVideo,
+                    gameEndVideoAspect: data.gameEndVideoAspect,
+                    gameEndMusic: data.gameEndMusic,
+                    gameEndMusicFilename: data.gameEndMusicFilename,
+                    library: data.library,
+                    levels: this.levels.map((lvl, index) => ({
+                        name: lvl.name,
+                        music: lvl.music || '',
+                        musicFilename: lvl.musicFilename || '',
+                        isExternal: !!lvl.isExternal,
+                        externalFilename: lvl.externalFilename || ''
+                    }))
+                },
+                levels: levelPayloads
+            })
+        })
+        .then(res => res.json())
+        .then(resData => {
+            if (resData.success) {
+                console.log("[Editor] Progetto e livelli salvati correttamente sul server locale!");
+                // Rinfresca la UI o mostra un feedback visivo leggero
+                if (this.app.ui && this.app.ui.showModalAlert) {
+                    this.app.ui.showModalAlert("Salvataggio", "💾 Progetto salvato con successo sul filesystem!");
+                }
+            } else {
+                console.error("[Editor] Errore nel salvataggio del progetto:", resData.error);
+                alert("Errore salvataggio progetto: " + resData.error);
+            }
+        })
+        .catch(err => {
+            console.error("[Editor] Impossibile contattare il server per il salvataggio:", err);
+            // Fallback: scarica file project.json nel browser se il server è irraggiungibile
+            const a = document.createElement('a');
+            a.href = URL.createObjectURL(new Blob([JSON.stringify(data)], { type: 'application/json' }));
+            a.download = 'project.json'; a.click();
+        });
     }
 
     loadProject(file) {
