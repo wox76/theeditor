@@ -580,17 +580,10 @@ export class UIManager {
             header.onclick = () => {
                 const targetId = `accordion-${header.dataset.accordion}`;
                 const targetContent = document.getElementById(targetId);
-                const isOpened = targetContent.classList.contains('open');
-                
-                // Chiudiamo tutti gli altri
-                document.querySelectorAll('.game-accordion-content').forEach(c => c.classList.remove('open'));
-                document.querySelectorAll('.game-accordion-header').forEach(h => h.classList.remove('active'));
                 
                 // Toggle l'attuale cliccato
-                if (!isOpened) {
-                    targetContent.classList.add('open');
-                    header.classList.add('active');
-                }
+                targetContent.classList.toggle('open');
+                header.classList.toggle('active');
             };
         });
 
