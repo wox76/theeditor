@@ -575,7 +575,7 @@ export class UIManager {
             btn.onclick = () => this.setActivePropTab(btn.dataset.tab);
         });
 
-        this._activePropTab = 'transform';
+        this._activePropTab = 'game';
     }
 
     setupPanels() {
