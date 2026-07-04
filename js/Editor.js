@@ -47,12 +47,13 @@ export class Editor {
         this.gameEndMusicFilename = '';
 
         // Default Post Processing effects active
-        this.gameBloomEffect = true;
+        this.gameBloomEffect = false;
         this.gameBloomStrength = 1.5;
         this.gameBloomRadius = 0.4;
-        this.gameCyberpunkEffect = true;
+        this.gameCyberpunkEffect = false;
         this.gameCyberpunkAberration = 0.3;
         this.gameCyberpunkScanlines = 0.1;
+        this.gamePbrActive = false;
     }
 
     init() {

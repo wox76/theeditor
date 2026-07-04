@@ -45,6 +45,8 @@ export class SceneManager {
         this.renderer = new THREE.WebGLRenderer({ antialias: true });
         this.renderer.shadowMap.enabled = false;
         this.renderer.shadowMap.type = THREE.PCFSoftShadowMap;
+        this.renderer.outputColorSpace = THREE.LinearSRGBColorSpace;
+        this.renderer.toneMapping = THREE.NoToneMapping;
         this.viewport.appendChild(this.renderer.domElement);
 
         // Post Processing
