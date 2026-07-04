@@ -1177,19 +1177,7 @@ export class UIManager {
         if (pSprintKey) pSprintKey.onchange = (e) => { if (this.app.editor.selected?.userData.isPlayer) this.app.editor.selected.userData.sprintKey = e.target.value; };
         if (pSprintMult) pSprintMult.oninput = (e) => { if (this.app.editor.selected?.userData.isPlayer) this.app.editor.selected.userData.sprintMult = parseFloat(e.target.value); };
 
-        // Pixel Effect Bindings
-        const gamePixelEffect = document.getElementById('game-pixel-effect');
-        const gamePixelSize = document.getElementById('game-pixel-size');
-        if (gamePixelEffect && gamePixelSize) {
-            gamePixelEffect.onchange = (e) => {
-                this.app.sceneManager.setPixelEffect(e.target.checked, parseFloat(gamePixelSize.value));
-            };
-            gamePixelSize.onchange = (e) => {
-                if (gamePixelEffect.checked) {
-                    this.app.sceneManager.setPixelEffect(true, parseFloat(e.target.value));
-                }
-            };
-        }
+        // Pixel Effect Bindings (Managed via post-processing bindings above)
 
         // Render Engine Bindings (Managed via post-processing bindings above)
 
