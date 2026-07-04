@@ -1137,7 +1137,13 @@ export class Editor {
                 return objData;
             }),
             library: this.app.ui.library || [],
-            levels: this.levels || [],
+            levels: (this.levels || []).map(lvl => ({
+                name: lvl.name,
+                music: lvl.music || '',
+                musicFilename: lvl.musicFilename || '',
+                isExternal: !!lvl.isExternal,
+                externalFilename: lvl.externalFilename || ''
+            })),
             gameTitle: this.gameTitle || 'Web 3D Game',
             gameSplashSubtitle: this.gameSplashSubtitle || '3D Editor Engine',
             gameSplashImage: this.gameSplashImage || null,
