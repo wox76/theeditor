@@ -17,6 +17,9 @@ export class Editor {
         this.clipboard = null;
         this.levels = []; // Array of { name, data, music } level entries
         this.currentLevelIndex = -1; // -1 = unsaved scene
+        this.projectName = 'default_project';
+        this.pendingCommand = null;
+        this.pendingCommandTimeout = null;
 
         // Raycaster
         this.raycaster = new THREE.Raycaster();
@@ -101,12 +104,57 @@ export class Editor {
         window.addEventListener('keydown', (e) => {
             if (this.app.game && this.app.game.isPlaying) return;
             if (!e.key) return;
-            if (e.key.toLowerCase() === 'f') this.focusSelected();
-            if (e.ctrlKey && e.key.toLowerCase() === 'z') { e.preventDefault(); this.undo(); }
-            if (e.ctrlKey && e.key.toLowerCase() === 'y') { e.preventDefault(); this.redo(); }
-            if (e.ctrlKey && e.key.toLowerCase() === 'c') { e.preventDefault(); this.copy(); }
-            if (e.ctrlKey && e.key.toLowerCase() === 'v') { e.preventDefault(); this.paste(); }
-            if (e.ctrlKey && e.key.toLowerCase() === 's') { e.preventDefault(); this.saveProject(); }
+
+            const tag = document.activeElement?.tagName;
+            if (tag === 'INPUT' || tag === 'TEXTAREA' || document.activeElement?.isContentEditable) return;
+
+            const keyLower = e.key.toLowerCase();
+            if (keyLower === 'f') this.focusSelected();
+            if (e.ctrlKey && keyLower === 'z') { e.preventDefault(); this.undo(); }
+            if (e.ctrlKey && keyLower === 'y') { e.preventDefault(); this.redo(); }
+            if (e.ctrlKey && keyLower === 'c') { e.preventDefault(); this.copy(); }
+            if (e.ctrlKey && keyLower === 'v') { e.preventDefault(); this.paste(); }
+            if (e.ctrlKey && keyLower === 's') { e.preventDefault(); this.saveProject(); }
+
+            // ---- Blender-style shortcuts (con oggetto selezionato) ----
+            if (this.selected) {
+                if (keyLower === 's' && !e.ctrlKey) {
+                    this.gizmo.setMode('scale');
+                    this.gizmo.showX = true; this.gizmo.showY = true; this.gizmo.showZ = true;
+                    if (this.app.ui?.setActiveTool) this.app.ui.setActiveTool('btn-scale');
+                    this.pendingCommand = null;
+                } else if (keyLower === 'r' && !e.ctrlKey) {
+                    this.pendingCommand = 'r';
+                    clearTimeout(this.pendingCommandTimeout);
+                    this.pendingCommandTimeout = setTimeout(() => {
+                        if (this.pendingCommand === 'r') this.pendingCommand = null;
+                    }, 2000);
+                } else if (keyLower === 'g' && !e.ctrlKey) {
+                    this.pendingCommand = 'g';
+                    clearTimeout(this.pendingCommandTimeout);
+                    this.pendingCommandTimeout = setTimeout(() => {
+                        if (this.pendingCommand === 'g') this.pendingCommand = null;
+                    }, 2000);
+                } else if (keyLower === 'x' || keyLower === 'y' || keyLower === 'z') {
+                    if (this.pendingCommand === 'r') {
+                        this.gizmo.setMode('rotate');
+                        this.gizmo.showX = (keyLower === 'x');
+                        this.gizmo.showY = (keyLower === 'y');
+                        this.gizmo.showZ = (keyLower === 'z');
+                        if (this.app.ui?.setActiveTool) this.app.ui.setActiveTool('btn-rot');
+                        this.pendingCommand = null;
+                    } else if (this.pendingCommand === 'g') {
+                        this.gizmo.setMode('translate');
+                        this.gizmo.showX = (keyLower === 'x');
+                        this.gizmo.showY = (keyLower === 'y');
+                        this.gizmo.showZ = (keyLower === 'z');
+                        if (this.app.ui?.setActiveTool) this.app.ui.setActiveTool('btn-trans');
+                        this.pendingCommand = null;
+                    }
+                } else if (!e.ctrlKey) {
+                    this.pendingCommand = null;
+                }
+            }
         });
     }
 
@@ -277,8 +325,14 @@ export class Editor {
 
     select(obj) {
         this.selected = obj;
-        if (obj) this.gizmo.attach(obj);
-        else this.gizmo.detach();
+        if (obj) {
+            this.gizmo.attach(obj);
+            this.gizmo.showX = true;
+            this.gizmo.showY = true;
+            this.gizmo.showZ = true;
+        } else {
+            this.gizmo.detach();
+        }
         this.setupMixer(obj);
         this.app.ui.update();
     }
@@ -558,6 +612,14 @@ export class Editor {
             case 'Spawn': geo = new THREE.ConeGeometry(0.5, 1, 4); mat.color.setHex(0xaa5500); break;
             case 'Goal': geo = new THREE.BoxGeometry(1, 0.1, 1); mat.color.setHex(0xD4AF37); break;
             case 'PowerUp': geo = new THREE.BoxGeometry(0.5, 0.5, 0.5); mat.color.setHex(0x00cccc); break;
+            case 'Analyze':
+                geo = new THREE.BoxGeometry(0.7, 0.7, 0.7);
+                mat = new THREE.MeshBasicMaterial({ color: 0x33cccc, wireframe: true, transparent: true, opacity: 0.8 });
+                break;
+            case 'Dialog':
+                geo = new THREE.BoxGeometry(0.6, 0.6, 0.6);
+                mat = new THREE.MeshBasicMaterial({ color: 0x7733cc, wireframe: true, transparent: true, opacity: 0.8 });
+                break;
             case 'Collision':
                 geo = new THREE.BoxGeometry(1, 1, 1);
                 mat = new THREE.MeshBasicMaterial({ color: 0x22ff22, wireframe: true, transparent: true, opacity: 0.3 });
@@ -646,6 +708,27 @@ export class Editor {
             mesh.userData.radius = 1.0;
             mesh.userData.points = 100;
             mesh.userData.disappearOnCollect = true;
+        }
+
+        if (type === 'Analyze') {
+            mesh.userData.objectName = 'Oggetto da Analizzare';
+            mesh.userData.objectDescription = 'Descrizione dell'oggetto...';
+            mesh.userData.activationKey = 'e';
+            mesh.userData.activationTouch = true;
+            mesh.userData.glbSource = null;
+            mesh.userData.imageSource = null;
+            mesh.userData.isTrigger = true;
+        }
+
+        if (type === 'Dialog') {
+            mesh.userData.dialogQuestion = 'Scrivi qui la tua domanda...';
+            mesh.userData.dialogAnswers = [];
+            mesh.userData.dialogBgColor = '#19191e';
+            mesh.userData.dialogTextColor = '#ffffff';
+            mesh.userData.dialogAccentColor = '#eb7b33';
+            mesh.userData.dialogFont = "'Segoe UI', sans-serif";
+            mesh.userData.dialogAvatar = null;
+            mesh.userData.isTrigger = true;
         }
 
         if (type === 'Collision') {
@@ -910,6 +993,14 @@ export class Editor {
                             mat.color.setHex(0x00cccc);
                             uData.isAsset = true;
                             break;
+                        case 'Analyze':
+                            geo = new THREE.BoxGeometry(0.7, 0.7, 0.7);
+                            mat = new THREE.MeshBasicMaterial({ color: 0x33cccc, wireframe: true, transparent: true, opacity: 0.8 });
+                            break;
+                        case 'Dialog':
+                            geo = new THREE.BoxGeometry(0.6, 0.6, 0.6);
+                            mat = new THREE.MeshBasicMaterial({ color: 0x7733cc, wireframe: true, transparent: true, opacity: 0.8 });
+                            break;
                         case 'Collision': {
                             const cw = (d.geo && d.geo.width !== undefined) ? d.geo.width : 1.0;
                             const ch = (d.geo && d.geo.height !== undefined) ? d.geo.height : 1.0;
@@ -1146,6 +1237,21 @@ export class Editor {
         this.objects = [];
         this.history = [];
         this.hIndex = -1;
+
+        this.app.sceneManager.scene.children.forEach(c => {
+            if (c.type === 'GridHelper') c.visible = true;
+        });
+
+        this.app.ui.update();
+    }
+
+    setupInitialDefaultScene() {
+        this.clearScene();
+        this.addCamera();
+        const player = PlayerFactory.createPlayer(this.objects.length);
+        player.position.set(0, 1, 0);
+        this.addObject(player);
+        this.app.ui.rebuildLibrary();
         this.app.ui.update();
     }
 

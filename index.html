@@ -87,18 +87,46 @@
                     </div>
                 </div>
                 <div id="toolbar-floating">
-                    <button class="tool-btn" id="btn-undo"><svg viewBox="0 0 24 24">
+                    <button class="tool-btn tool-btn-editor" id="btn-undo"><svg viewBox="0 0 24 24">
                             <path
                                 d="M12.5 8c-2.65 0-5.05.99-6.9 2.6L2 7v9h9l-3.62-3.62c1.39-1.16 3.16-1.88 5.12-1.88 3.54 0 6.55 2.31 7.6 5.5l2.37-.78C21.08 11.03 17.15 8 12.5 8z" />
                         </svg></button>
-                    <button class="tool-btn" id="btn-redo"><svg viewBox="0 0 24 24">
+                    <button class="tool-btn tool-btn-editor" id="btn-redo"><svg viewBox="0 0 24 24">
                             <path
                                 d="M18.4 10.6C16.55 9 14.15 8 11.5 8c-4.65 0-8.58 3.03-9.96 7.22L3.9 16c1.05-3.19 4.05-5.5 7.6-5.5 1.95 0 3.73.72 5.12 1.88L13 16h9V7l-3.6 3.6z" />
                         </svg></button>
                     <button class="tool-btn" id="btn-play"><svg viewBox="0 0 24 24">
                             <path d="M8 5v14l11-7z" />
                         </svg></button>
-                    <div class="tool-divider"></div>
+                    <button class="tool-btn" id="btn-game-view" title="Game View — Nascondi gizmo e pannelli"><svg viewBox="0 0 24 24">
+                            <path d="M12 4.5C7 4.5 2.73 7.61 1 12c1.73 4.39 6 7.5 11 7.5s9.27-3.11 11-7.5c-1.73-4.39-6-7.5-11-7.5zM12 17c-2.76 0-5-2.24-5-5s2.24-5 5-5 5 2.24 5 5-2.24 5-5 5zm0-8c-1.66 0-3 1.34-3 3s1.34 3 3 3 3-1.34 3-3-1.34-3-3-3z"/>
+                        </svg></button>
+                    <div class="tool-divider tool-divider-editor"></div>
+                    <button class="tool-btn tool-btn-editor active" id="btn-trans"><svg viewBox="0 0 24 24">
+                            <path d="M12 2L8 6h3v5H6V8L2 12l4 4v-3h5v5H8l4 4 4-4h-3v-5h5v3l4-4-4-4v3h-5V6h3L12 2z" />
+                        </svg></button>
+                    <button class="tool-btn tool-btn-editor" id="btn-rot"><svg viewBox="0 0 24 24">
+                            <path
+                                d="M12 2C6.48 2 2 6.48 2 12c0 3.31 1.61 6.24 4.09 8.17l1.42-1.42C5.9 17.29 4.95 15.22 4.95 12c0-3.87 3.13-7 7-7 1.93 0 3.68.79 4.94 2.06l-3.94 3.94h9V2l-3.32 3.32C16.92 3.29 14.58 2 12 2z" />
+                        </svg></button>
+                    <button class="tool-btn tool-btn-editor" id="btn-scale"><svg viewBox="0 0 24 24">
+                            <path
+                                d="M19 12h-2v3h-3v2h5v-5zM7 9h3V7H5v5h2V9zm14-6H3c-1.1 0-2 .9-2 2v14c0 1.1.9 2 2 2h18c1.1 0 2-.9 2-2V5c0-1.1-.9-2-2-2zm0 16H3V5h18v14z" />
+                        </svg></button>
+                    <div class="tool-divider tool-divider-editor"></div>
+                    <div class="tool-btn-editor-group" style="display:flex; align-items:center; gap:5px; margin-left:5px; overflow:hidden;">
+                        <input type="checkbox" id="snap-trans" title="Snap Translation (0.5)">
+                        <span style="font-size:10px; color:#aaa;">T</span>
+                        <input type="checkbox" id="snap-rot" title="Snap Rotation (5°)">
+                        <span style="font-size:10px; color:#aaa;">R</span>
+                        <input type="checkbox" id="snap-scale" title="Snap Scale (0.1)">
+                        <span style="font-size:10px; color:#aaa;">S</span>
+                    </div>
+                    <div class="tool-divider tool-divider-editor"></div>
+                    <button class="tool-btn tool-btn-editor" id="btn-delete" style="color:#ff4444;"><svg viewBox="0 0 24 24">
+                            <path d="M6 19c0 1.1.9 2 2 2h8c1.1 0 2-.9 2-2V7H6v12zM19 4h-3.5l-1-1h-5l-1 1H5v2h14V4z" />
+                        </svg></button>
+                </div>
                     <button class="tool-btn active" id="btn-trans"><svg viewBox="0 0 24 24">
                             <path d="M12 2L8 6h3v5H6V8L2 12l4 4v-3h5v5H8l4 4 4-4h-3v-5h5v3l4-4-4-4v3h-5V6h3L12 2z" />
                         </svg></button>
@@ -961,6 +989,47 @@
                                     type="checkbox" style="margin:0;"></div>
                         </div>
 
+                        <!-- ANALYZE SECTION -->
+                        <div id="section-analyze" class="hidden">
+                            <div style="font-weight:bold; margin-bottom:10px; color:#33cccc;">🔍 Impostazioni Analizza</div>
+                            <div class="prop-row"><span class="prop-label">Nome Oggetto</span><input id="anz-name" type="text" class="prop-input"></div>
+                            <div class="prop-row" style="align-items:flex-start;">
+                                <span class="prop-label">Descrizione</span>
+                                <textarea id="anz-desc" class="prop-input" style="height:60px; resize:vertical; font-family:inherit;"></textarea>
+                            </div>
+                            <div class="prop-row"><span class="prop-label">Tasto Attiv.</span><input id="anz-key" type="text" maxlength="1" class="prop-input" style="text-align:center; width:40px; flex:none;"></div>
+                            <div class="prop-row"><span class="prop-label">Attiva al Tatto</span><input id="anz-touch" type="checkbox" style="margin:0;"></div>
+                            
+                            <!-- GLB Model -->
+                            <div style="margin-top:10px; border-top:1px solid #333; padding-top:10px;">
+                                <div style="display:flex; gap:10px; align-items:flex-start; margin-bottom:10px;">
+                                    <div id="anz-glb-preview-container" style="display:none; flex:0 0 64px; height:64px; background:#111; border:1px solid #333; border-radius:4px; overflow:hidden; position:relative;">
+                                        <img id="anz-glb-preview-img" style="width:100%; height:100%; object-fit:contain; display:none;">
+                                    </div>
+                                    <div style="flex:1;">
+                                        <button class="btn-full" id="btn-analyze-import" style="margin-bottom:5px;">📂 Carica Modello GLB</button>
+                                        <div style="display:flex; align-items:center; gap:5px;">
+                                            <span style="font-size:10px; color:#888;">File:</span>
+                                            <span id="anz-filename" style="flex:1; font-size:10px; color:#33cccc; overflow:hidden; text-overflow:ellipsis; white-space:nowrap;">(Default Box)</span>
+                                        </div>
+                                    </div>
+                                </div>
+                            </div>
+                        </div>
+
+                        <!-- DIALOG SECTION -->
+                        <div id="section-dialog" class="hidden">
+                            <div style="font-weight:bold; margin-bottom:10px; color:#7733cc;">💬 Impostazioni Dialogo</div>
+                            <div class="prop-row" style="align-items:flex-start;">
+                                <span class="prop-label">Domanda</span>
+                                <textarea id="dlg-question" class="prop-input" style="height:50px; resize:vertical; font-family:inherit;"></textarea>
+                            </div>
+                            <div class="prop-row"><span class="prop-label">Sfondo</span><input id="dlg-bgcolor" type="color" class="prop-input" style="padding:0; height:24px;"></div>
+                            <div class="prop-row"><span class="prop-label">Colore Testo</span><input id="dlg-textcolor" type="color" class="prop-input" style="padding:0; height:24px;"></div>
+                            <div class="prop-row"><span class="prop-label">Accent Color</span><input id="dlg-accentcolor" type="color" class="prop-input" style="padding:0; height:24px;"></div>
+                            <div class="prop-row"><span class="prop-label">Font</span><input id="dlg-font" type="text" class="prop-input" placeholder="'Segoe UI', sans-serif"></div>
+                        </div>
+
                         <!-- SPLAT ENV SECTION -->
                         <div id="section-splatenv" class="hidden">
                             <div style="font-weight:bold; margin-bottom:10px; color:#8844ff;">🌌 Splat ENV Settings
@@ -1028,6 +1097,8 @@
                 <div class="asset-menu-item" data-type="Goal">🏆 Aggiungi Goal</div>
                 <div class="asset-menu-item" data-type="Collision">🚧 Aggiungi Collision (Trigger)</div>
                 <div class="asset-menu-item" data-type="PowerUp">⚡ Aggiungi PowerUp</div>
+                <div class="asset-menu-item" data-type="Analyze" style="color:#33cccc;">🔍 Aggiungi Analizza</div>
+                <div class="asset-menu-item" data-type="Dialog" style="color:#7733cc;">💬 Aggiungi Dialog</div>
             </div>
         </footer>
     </div>

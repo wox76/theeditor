@@ -168,6 +168,8 @@ export class UIManager {
         if (type === 'SpotLight') color = '#ffffaa', icon = '🔦';
         if (type === 'DirectionalLight') color = '#ffffff', icon = '☀️';
         if (type === 'SplatEnv') color = '#8844ff', icon = '🌌';
+        if (type === 'Analyze') color = '#33cccc', icon = '🔍';
+        if (type === 'Dialog') color = '#7733cc', icon = '💬';
 
         card.style.borderColor = color;
         const thumbId = `thumb-${Math.floor(Math.random() * 1000000)}`;
@@ -822,6 +824,54 @@ export class UIManager {
             const r = document.getElementById(`t-r${axis}`); if (r) r.onchange = (e) => { if (this.app.editor.selected) this.app.editor.selected.rotation[axis] = THREE.MathUtils.degToRad(parseFloat(e.target.value)); };
             const s = document.getElementById(`t-s${axis}`); if (s) s.onchange = (e) => { if (this.app.editor.selected) this.app.editor.selected.scale[axis] = parseFloat(e.target.value); };
         });
+
+        // Binding Analyze
+        const anzName = document.getElementById('anz-name');
+        if (anzName) anzName.oninput = (e) => { if (this.app.editor.selected) this.app.editor.selected.userData.objectName = e.target.value; };
+        const anzDesc = document.getElementById('anz-desc');
+        if (anzDesc) anzDesc.oninput = (e) => { if (this.app.editor.selected) this.app.editor.selected.userData.objectDescription = e.target.value; };
+        const anzKey = document.getElementById('anz-key');
+        if (anzKey) anzKey.oninput = (e) => { if (this.app.editor.selected) this.app.editor.selected.userData.activationKey = e.target.value.toLowerCase(); };
+        const anzTouch = document.getElementById('anz-touch');
+        if (anzTouch) anzTouch.onchange = (e) => { if (this.app.editor.selected) this.app.editor.selected.userData.activationTouch = e.target.checked; };
+
+        const btnAnzImport = document.getElementById('btn-analyze-import');
+        if (btnAnzImport) {
+            btnAnzImport.onclick = () => {
+                const input = document.createElement('input');
+                input.type = 'file'; input.accept = '.glb,.gltf';
+                input.onchange = (e) => {
+                    const file = e.target.files[0];
+                    if (file) {
+                        const reader = new FileReader();
+                        reader.onload = (ev) => {
+                            const dataUrl = ev.target.result;
+                            if (this.app.editor.selected) {
+                                this.app.editor.selected.userData.glbFilename = file.name;
+                                this.app.editor.selected.userData.glbSource = dataUrl;
+                                const filenameEl = document.getElementById('anz-filename');
+                                if (filenameEl) filenameEl.innerText = file.name;
+                                this.app.editor.reloadModel(this.app.editor.selected, dataUrl);
+                            }
+                        };
+                        reader.readAsDataURL(file);
+                    }
+                };
+                input.click();
+            };
+        }
+
+        // Binding Dialog
+        const dlgQuest = document.getElementById('dlg-question');
+        if (dlgQuest) dlgQuest.oninput = (e) => { if (this.app.editor.selected) this.app.editor.selected.userData.dialogQuestion = e.target.value; };
+        const dlgBg = document.getElementById('dlg-bgcolor');
+        if (dlgBg) dlgBg.onchange = (e) => { if (this.app.editor.selected) this.app.editor.selected.userData.dialogBgColor = e.target.value; };
+        const dlgTxt = document.getElementById('dlg-textcolor');
+        if (dlgTxt) dlgTxt.onchange = (e) => { if (this.app.editor.selected) this.app.editor.selected.userData.dialogTextColor = e.target.value; };
+        const dlgAcc = document.getElementById('dlg-accentcolor');
+        if (dlgAcc) dlgAcc.onchange = (e) => { if (this.app.editor.selected) this.app.editor.selected.userData.dialogAccentColor = e.target.value; };
+        const dlgFont = document.getElementById('dlg-font');
+        if (dlgFont) dlgFont.oninput = (e) => { if (this.app.editor.selected) this.app.editor.selected.userData.dialogFont = e.target.value; };
 
         document.getElementById('p-typology').onchange = (e) => {
             if (this.app.editor.selected?.userData.isPlayer) {
@@ -1495,7 +1545,7 @@ export class UIManager {
     updateProperties() {
         const selected = this.app.editor.selected;
         // Hide all first
-        ['section-transform', 'section-player', 'section-camera', 'section-enemy', 'section-bonus', 'section-boss', 'section-powerup', 'section-spawn', 'section-goal', 'section-catcher', 'section-collision', 'section-model', 'section-splatenv'].forEach(id => {
+        ['section-transform', 'section-player', 'section-camera', 'section-enemy', 'section-bonus', 'section-boss', 'section-powerup', 'section-spawn', 'section-goal', 'section-catcher', 'section-collision', 'section-model', 'section-splatenv', 'section-analyze', 'section-dialog'].forEach(id => {
             const el = document.getElementById(id); if (el) el.classList.add('hidden');
         });
         document.getElementById('section-game').classList.add('hidden');
@@ -1607,6 +1657,36 @@ export class UIManager {
             if (el) {
                 this.setActivePropTab('object');
                 el.classList.remove('hidden');
+            }
+
+            // Popola campi Analyze
+            if (type === 'Analyze') {
+                document.getElementById('anz-name').value = selected.userData.objectName || '';
+                document.getElementById('anz-desc').value = selected.userData.objectDescription || '';
+                document.getElementById('anz-key').value = selected.userData.activationKey || 'e';
+                document.getElementById('anz-touch').checked = !!selected.userData.activationTouch;
+                
+                const model = selected.getObjectByName('model');
+                const filenameEl = document.getElementById('anz-filename');
+                if (filenameEl) filenameEl.innerText = selected.userData.glbFilename || "(Default Box)";
+                
+                const container = document.getElementById('anz-glb-preview-container');
+                if (model && selected.userData.glbSource) {
+                    if (container) container.style.display = 'flex';
+                    const img = document.getElementById('anz-glb-preview-img');
+                    if (img && (!img.src || img.style.display === 'none')) this.generateThumbnail(model, 'anz-glb-preview-img');
+                } else {
+                    if (container) container.style.display = 'none';
+                }
+            }
+
+            // Popola campi Dialog
+            if (type === 'Dialog') {
+                document.getElementById('dlg-question').value = selected.userData.dialogQuestion || '';
+                document.getElementById('dlg-bgcolor').value = selected.userData.dialogBgColor || '#19191e';
+                document.getElementById('dlg-textcolor').value = selected.userData.dialogTextColor || '#ffffff';
+                document.getElementById('dlg-accentcolor').value = selected.userData.dialogAccentColor || '#eb7b33';
+                document.getElementById('dlg-font').value = selected.userData.dialogFont || "'Segoe UI', sans-serif";
             }
 
             const prefix = type === 'Enemy' ? 'e' : type === 'Bonus' ? 'b' : type === 'Boss' ? 'bs' : type === 'PowerUp' ? 'pu' : type === 'Spawn' ? 'sp' : type === 'Goal' ? 'g' : type === 'Collision' ? 'col' : (type === 'catcher_base' || type === 'Catcher') ? 'c' : type === 'Model' ? 'm' : type === 'SplatEnv' ? 'se' : '';

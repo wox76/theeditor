@@ -1239,7 +1239,159 @@ export class GameManager {
                 }
             }
 
+            // Runtime interattivo Analyze e Dialog
             if (collided) {
+                if (o.userData.type === 'Analyze') {
+                    const anz = o.userData;
+                    const reqKey = anz.activationKey || 'e';
+                    const triggerActive = anz.activationTouch || this.keys.has(reqKey.toLowerCase());
+                    
+                    if (triggerActive && !this._isAnalyzing) {
+                        this._isAnalyzing = true;
+                        
+                        // Creazione overlay HTML per l'analisi
+                        let overlay = document.getElementById('analyze-overlay');
+                        if (!overlay) {
+                            overlay = document.createElement('div');
+                            overlay.id = 'analyze-overlay';
+                            overlay.style.cssText = `
+                                position: fixed;
+                                top: 50%;
+                                left: 50%;
+                                transform: translate(-50%, -50%) scale(0.9);
+                                background: ${anz.dialogBgColor || 'rgba(25, 25, 30, 0.95)'};
+                                border: 2px solid ${anz.dialogAccentColor || '#33cccc'};
+                                border-radius: 12px;
+                                padding: 20px;
+                                color: ${anz.dialogTextColor || '#ffffff'};
+                                font-family: ${anz.dialogFont || 'inherit'};
+                                max-width: 400px;
+                                width: 90%;
+                                z-index: 10000;
+                                opacity: 0;
+                                transition: all 0.3s cubic-bezier(0.4, 0, 0.2, 1);
+                                box-shadow: 0 10px 30px rgba(0,0,0,0.5);
+                            `;
+                            document.body.appendChild(overlay);
+                        }
+                        
+                        // Riempie il contenuto
+                        overlay.innerHTML = `
+                            <div style="font-weight:bold; font-size:16px; margin-bottom:8px; border-bottom:1px solid rgba(255,255,255,0.1); padding-bottom:6px; color:${anz.dialogAccentColor || '#33cccc'}">🔍 ${anz.objectName || 'Oggetto Analizzato'}</div>
+                            <div style="font-size:13px; line-height:1.5; margin-bottom:15px; white-space:pre-wrap;">${anz.objectDescription || 'Nessuna descrizione disponibile.'}</div>
+                            <div style="text-align:right; font-size:10px; color:#aaa; font-style:italic;">Premi 'Esc' o allontanati per chiudere</div>
+                        `;
+                        
+                        // Animazione entrata
+                        setTimeout(() => {
+                            overlay.style.opacity = '1';
+                            overlay.style.transform = 'translate(-50%, -50%) scale(1)';
+                        }, 50);
+                        
+                        // Chiusura automatica allontanandosi o premendo esc
+                        const closeAnz = () => {
+                            overlay.style.opacity = '0';
+                            overlay.style.transform = 'translate(-50%, -50%) scale(0.9)';
+                            setTimeout(() => {
+                                if (overlay.parentNode) overlay.parentNode.removeChild(overlay);
+                                this._isAnalyzing = false;
+                            }, 300);
+                            window.removeEventListener('keydown', handleEsc);
+                        };
+                        
+                        const handleEsc = (e) => { if (e.key === 'Escape') closeAnz(); };
+                        window.addEventListener('keydown', handleEsc);
+                        
+                        // Auto chiusura se allontanato
+                        const checkDistInterval = setInterval(() => {
+                            if (!this.isPlaying) {
+                                clearInterval(checkDistInterval);
+                                closeAnz();
+                                return;
+                            }
+                            const pWorld = new THREE.Vector3();
+                            this.player.getWorldPosition(pWorld);
+                            const oWorld = new THREE.Vector3();
+                            o.getWorldPosition(oWorld);
+                            const currentDist = pWorld.distanceTo(oWorld);
+                            if (currentDist > (anz.radius || 3.0)) {
+                                clearInterval(checkDistInterval);
+                                closeAnz();
+                            }
+                        }, 200);
+                    }
+                }
+                
+                if (o.userData.type === 'Dialog') {
+                    const dlg = o.userData;
+                    if (!this._isDialogActive) {
+                        this._isDialogActive = true;
+                        
+                        // Creazione overlay HTML per il dialogo
+                        let bubble = document.getElementById('dialog-bubble');
+                        if (!bubble) {
+                            bubble = document.createElement('div');
+                            bubble.id = 'dialog-bubble';
+                            bubble.style.cssText = `
+                                position: fixed;
+                                bottom: 10%;
+                                left: 50%;
+                                transform: translate(-50%, 20px);
+                                background: ${dlg.dialogBgColor || '#19191e'};
+                                border: 2px solid ${dlg.dialogAccentColor || '#7733cc'};
+                                border-radius: 16px;
+                                padding: 20px;
+                                color: ${dlg.dialogTextColor || '#ffffff'};
+                                font-family: ${dlg.dialogFont || 'inherit'};
+                                max-width: 600px;
+                                width: 90%;
+                                z-index: 10000;
+                                opacity: 0;
+                                transition: all 0.3s ease;
+                                box-shadow: 0 10px 40px rgba(0,0,0,0.6);
+                            `;
+                            document.body.appendChild(bubble);
+                        }
+                        
+                        bubble.innerHTML = `
+                            <div style="font-size:14px; line-height:1.6; margin-bottom:10px;">${dlg.dialogQuestion || 'Scrivi qui la tua domanda...'}</div>
+                            <div style="text-align:right; font-size:10px; color:#aaa; font-style:italic;">Allontanati per chiudere</div>
+                        `;
+                        
+                        setTimeout(() => {
+                            bubble.style.opacity = '1';
+                            bubble.style.transform = 'translate(-50%, 0)';
+                        }, 50);
+                        
+                        const closeDlg = () => {
+                            bubble.style.opacity = '0';
+                            bubble.style.transform = 'translate(-50%, 20px)';
+                            setTimeout(() => {
+                                if (bubble.parentNode) bubble.parentNode.removeChild(bubble);
+                                this._isDialogActive = false;
+                            }, 300);
+                        };
+                        
+                        // Auto chiusura se allontanato
+                        const checkDistInterval = setInterval(() => {
+                            if (!this.isPlaying) {
+                                clearInterval(checkDistInterval);
+                                closeDlg();
+                                return;
+                            }
+                            const pWorld = new THREE.Vector3();
+                            this.player.getWorldPosition(pWorld);
+                            const oWorld = new THREE.Vector3();
+                            o.getWorldPosition(oWorld);
+                            const currentDist = pWorld.distanceTo(oWorld);
+                            if (currentDist > (dlg.radius || 3.0)) {
+                                clearInterval(checkDistInterval);
+                                closeDlg();
+                            }
+                        }, 200);
+                    }
+                }
+
                 if (o.userData.type === 'Collision') {
                     if (o.userData.triggered && o.userData.oneShot) return;
 

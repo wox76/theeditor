@@ -486,3 +486,97 @@ body { margin: 0; padding: 0; width: 100vw; height: 100vh; background-color: var
     display: flex;
 }
 
+/* ========== GAME VIEW MODE ========== */
+#left-panel { transition: width 0.25s ease, opacity 0.25s ease; }
+#right-panel { transition: width 0.25s ease, opacity 0.25s ease; }
+#asset-manager { transition: height 0.25s ease, opacity 0.25s ease; }
+
+.game-view-mode #left-panel { width: 0 !important; min-width: 0 !important; overflow: hidden; opacity: 0; border: none; }
+.game-view-mode #right-panel { width: 0 !important; min-width: 0 !important; overflow: hidden; opacity: 0; border: none; }
+.game-view-mode #asset-manager { height: 0 !important; overflow: hidden; opacity: 0; border: none; }
+.game-view-mode .resizer { display: none; }
+.game-view-mode .tool-btn-editor, .game-view-mode .tool-btn-editor-group { overflow: hidden; max-width: 0 !important; padding: 0 !important; margin: 0 !important; opacity: 0; pointer-events: none; }
+.game-view-mode .tool-divider-editor { overflow: hidden; max-width: 0 !important; margin: 0 !important; opacity: 0; }
+.tool-btn-editor { max-width: 32px; transition: max-width 0.2s ease, opacity 0.2s ease, padding 0.2s ease, margin 0.2s ease; }
+.tool-btn-editor-group { max-width: 120px; transition: max-width 0.2s ease, opacity 0.2s ease, padding 0.2s ease, margin 0.2s ease; }
+.tool-divider-editor { transition: max-width 0.2s ease, opacity 0.2s ease, margin 0.2s ease; }
+
+.tool-btn.game-view-active { background-color: #00bcd4; color: white; box-shadow: 0 0 8px rgba(0,188,212,0.5); }
+
+
+/* ========== VERTICAL PROPERTY TABS ========== */
+#properties-panel {
+    display: flex;
+    flex-direction: column;
+    flex: 1;
+    min-height: 0;
+    overflow: hidden;
+}
+#prop-tabs-container {
+    display: flex;
+    flex-direction: row;
+    flex: 1;
+    min-height: 0;
+    overflow: hidden;
+}
+#prop-vtabs {
+    display: flex;
+    flex-direction: column;
+    width: 50px;
+    flex-shrink: 0;
+    background: #252525;
+    border-right: 1px solid #111;
+    padding-top: 4px;
+    gap: 4px;
+}
+.prop-vtab {
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    justify-content: center;
+    gap: 3px;
+    padding: 8px 2px;
+    background: transparent;
+    border: none;
+    border-left: 3px solid transparent;
+    color: #666;
+    cursor: pointer;
+    font-size: 8px;
+    text-transform: uppercase;
+    transition: all 0.15s ease;
+    width: 100%;
+}
+.prop-vtab svg {
+    width: 16px;
+    height: 16px;
+    fill: currentColor;
+}
+.prop-vtab span {
+    font-size: 7px;
+    line-height: 1;
+}
+.prop-vtab:hover {
+    color: #aaa;
+    background: rgba(255,255,255,0.04);
+}
+.prop-vtab.active {
+    color: var(--accent);
+    border-left-color: var(--accent);
+    background: rgba(235,123,51,0.08);
+}
+#prop-tab-contents {
+    flex: 1;
+    overflow: hidden;
+    position: relative;
+}
+.prop-tab-content {
+    display: none;
+    flex-direction: column;
+    height: 100%;
+    overflow-y: auto;
+    padding: 10px;
+}
+.prop-tab-content.active {
+    display: flex;
+}
+
