@@ -14,28 +14,34 @@ class App {
     }
 
     init() {
-        this.sceneManager.init();
-        this.editor.init();
-        this.ui.init();
-        this.loop();
+        try {
+            this.sceneManager.init();
+            this.editor.init();
+            this.ui.init();
+            this.loop();
+        } catch (e) {
+            console.error("Critical error during App init:", e);
+        }
     }
 
     loop() {
         requestAnimationFrame(() => this.loop());
         
-        if (this.game.isEndScreen) {
-            // End screen: video is an HTML element overlaid on the canvas.
-            // Skip ALL Three.js work so the GPU is free for video decoding.
-            return;
-        }
+        try {
+            if (this.game && this.game.isEndScreen) {
+                return;
+            }
 
-        if (this.game.isPlaying) {
-            this.game.update();
-        } else {
-            this.editor.update();
+            if (this.game && this.game.isPlaying) {
+                this.game.update();
+            } else {
+                if (this.editor) this.editor.update();
+            }
+            
+            if (this.sceneManager) this.sceneManager.update();
+        } catch (e) {
+            console.error("Critical error in App loop:", e);
         }
-        
-        this.sceneManager.update();
     }
 }
 
