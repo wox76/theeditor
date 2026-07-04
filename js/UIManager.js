@@ -21,6 +21,12 @@ export class UIManager {
         this.setupAssetManager();
         this.setupEquipPreview();
         this.setupLevelManager();
+
+        // Apri il selettore dei progetti all'avvio
+        setTimeout(() => {
+            const btnLoadProject = document.getElementById('btn-load-project');
+            if (btnLoadProject) btnLoadProject.click();
+        }, 300);
     }
 
     rebuildLibrary() {
