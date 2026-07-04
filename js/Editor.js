@@ -1165,10 +1165,16 @@ export class Editor {
         // Salva localmente sul server tramite chiamata API POST
         const projectName = this.projectName || 'default_project';
         const levelPayloads = this.levels.map((lvl, index) => {
+            // Calcolo pulito del filename
+            let filename = lvl.externalFilename || lvl.name.toLowerCase().replace(/\s+/g, '_');
+            if (!filename.endsWith('.json')) {
+                filename += '.json';
+            }
+
             // Se è il livello corrente, prendiamo gli oggetti in tempo reale
             if (index === this.currentLevelIndex) {
                 return {
-                    filename: lvl.name.toLowerCase().replace(/\s+/g, '_') + '.json',
+                    filename: filename,
                     data: JSON.stringify({
                         scene: data.scene,
                         library: data.library,
@@ -1192,7 +1198,7 @@ export class Editor {
                 };
             }
             return {
-                filename: lvl.name.toLowerCase().replace(/\s+/g, '_') + '.json',
+                filename: filename,
                 data: lvl.data
             };
         });
