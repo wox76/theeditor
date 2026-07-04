@@ -11,7 +11,7 @@ body { margin: 0; padding: 0; width: 100vw; height: 100vh; background-color: var
 #workspace { display: flex; flex: 1; min-height: 0; width: 100%; }
 
 /* Pannelli */
-#left-panel { width: 180px; min-width: 120px; background-color: var(--bg-panel); display: flex; flex-direction: column; border-right: 1px solid var(--border); }
+#left-panel { width: 374px; min-width: 300px; background-color: var(--bg-panel); display: flex; flex-direction: column; border-right: 1px solid var(--border); }
 #viewport { flex: 1; background-color: #000; position: relative; overflow: hidden; }
 #right-panel { width: 280px; min-width: 200px; background-color: var(--bg-panel); display: flex; flex-direction: column; border-left: 1px solid var(--border); }
 #outliner-panel { height: 40%; min-height: 100px; display: flex; flex-direction: column; }
