@@ -1679,62 +1679,21 @@ export class UIManager {
         ['section-transform', 'section-player', 'section-camera', 'section-enemy', 'section-bonus', 'section-boss', 'section-powerup', 'section-spawn', 'section-goal', 'section-catcher', 'section-collision', 'section-model', 'section-splatenv', 'section-analyze', 'section-dialog'].forEach(id => {
             const el = document.getElementById(id); if (el) el.classList.add('hidden');
         });
-        document.getElementById('section-game').classList.add('hidden');
-
-        if (!selected) {
-            this.setActivePropTab('game');
-            // Show Game Settings if nothing selected
+        // Show Game Settings and populate if game tab is active
+        if (this._activePropTab === 'game') {
             document.getElementById('section-game').classList.remove('hidden');
             document.getElementById('game-title-input').value = this.app.editor.gameTitle || 'Web 3D Game';
             document.getElementById('game-subtitle-input').value = this.app.editor.gameSplashSubtitle || '3D Editor Engine';
             
-            // Popola campi HDR & Ambiente
-            const hdrFilenameEl = document.getElementById('hdr-filename');
-            if (hdrFilenameEl) {
-                hdrFilenameEl.innerText = this.app.editor.gameSkyboxFilename || '(Default Sky)';
-            }
-            const btnHdrClearEl = document.getElementById('btn-hdr-clear');
-            if (btnHdrClearEl) {
-                btnHdrClearEl.classList.toggle('hidden', !this.app.editor.gameSkyboxData);
-            }
-            const hdrIntensityEl = document.getElementById('hdr-intensity');
-            if (hdrIntensityEl) {
-                hdrIntensityEl.value = this.app.editor.gameSkyboxIntensity !== undefined ? this.app.editor.gameSkyboxIntensity : 1.0;
-            }
-            const gamePbrEl = document.getElementById('game-pbr');
-            if (gamePbrEl) {
-                gamePbrEl.checked = this.app.editor.gamePbrActive !== false;
-            }
-            const gameExposureEl = document.getElementById('game-exposure');
-            if (gameExposureEl) {
-                gameExposureEl.value = this.app.editor.gameExposure !== undefined ? this.app.editor.gameExposure : 1.0;
-            }
-            const gameShadowsEl = document.getElementById('game-shadows');
-            if (gameShadowsEl) {
-                gameShadowsEl.checked = !!this.app.editor.gameShadows;
-            }
-            const gameReflectionsEl = document.getElementById('game-reflections');
-            if (gameReflectionsEl) {
-                gameReflectionsEl.checked = !!this.app.editor.gameReflections;
-            }
 
-            // Popola Bloom
-            const bloomEnableEl = document.getElementById('bloom-enable');
-            if (bloomEnableEl) bloomEnableEl.checked = !!this.app.editor.gameBloomEffect;
-            const bloomStrengthEl = document.getElementById('bloom-strength');
-            if (bloomStrengthEl) bloomStrengthEl.value = this.app.editor.gameBloomStrength !== undefined ? this.app.editor.gameBloomStrength : 1.5;
-            const bloomRadiusEl = document.getElementById('bloom-radius');
-            if (bloomRadiusEl) bloomRadiusEl.value = this.app.editor.gameBloomRadius !== undefined ? this.app.editor.gameBloomRadius : 0.4;
+        }
 
-            // Popola Vignette
-            const vignetteEnableEl = document.getElementById('vignette-enable');
-            if (vignetteEnableEl) vignetteEnableEl.checked = !!this.app.editor.gameCyberpunkEffect;
-            const vignetteAberrationEl = document.getElementById('vignette-aberration');
-            if (vignetteAberrationEl) vignetteAberrationEl.value = this.app.editor.gameCyberpunkAberration !== undefined ? this.app.editor.gameCyberpunkAberration : 0.3;
-            const vignetteScanlinesEl = document.getElementById('vignette-scanlines');
-            if (vignetteScanlinesEl) vignetteScanlinesEl.value = this.app.editor.gameCyberpunkScanlines !== undefined ? this.app.editor.gameCyberpunkScanlines : 0.1;
-            document.getElementById('game-splash-prompt-bg').value = this.app.editor.gameSplashPromptBg || 'rgba(255,255,255,0.1)';
-            document.getElementById('game-splash-prompt-color').value = this.app.editor.gameSplashPromptColor || '#ffffff';
+        if (!selected && this._activePropTab !== 'game') {
+            this.setActivePropTab('game');
+        } else if (!selected && this._activePropTab === 'game') {
+            // (Rimasto vuoto o per compatibilità legacy)
+            
+
             
             const musicNameEl = document.getElementById('splash-music-filename');
             const btnClearMusic = document.getElementById('btn-splash-music-clear');

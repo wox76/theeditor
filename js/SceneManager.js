@@ -35,7 +35,7 @@ export class SceneManager {
     init() {
         // Scene Setup
         this.scene = new THREE.Scene();
-        this.scene.background = new THREE.Color(0x3a3a3d);
+        this.scene.background = new THREE.Color(0xe5e5ea);
 
         // Camera Setup
         this.camera = new THREE.PerspectiveCamera(75, 1, 0.1, 1000);
@@ -93,27 +93,26 @@ export class SceneManager {
         this.dirLight.shadow.bias = -0.001;
         this.scene.add(this.dirLight);
 
-        // Grid
-        const grid = new THREE.GridHelper(20, 20, 0x444444, 0x333333);
+        // Grid (scura per risaltare su sfondo chiaro)
+        const grid = new THREE.GridHelper(40, 40, 0x555555, 0x888888);
         this.scene.add(grid);
 
         // Custom X and Z axes (Red and Blue)
-        const xLineGeo = new THREE.BufferGeometry().setFromPoints([new THREE.Vector3(-10, 0, 0), new THREE.Vector3(10, 0, 0)]);
-        const xLine = new THREE.Line(xLineGeo, new THREE.LineBasicMaterial({ color: 0xff0000 }));
+        const xLineGeo = new THREE.BufferGeometry().setFromPoints([new THREE.Vector3(-20, 0, 0), new THREE.Vector3(20, 0, 0)]);
+        const xLine = new THREE.Line(xLineGeo, new THREE.LineBasicMaterial({ color: 0xff3b30, linewidth: 2 }));
         this.scene.add(xLine);
 
-        const zLineGeo = new THREE.BufferGeometry().setFromPoints([new THREE.Vector3(0, 0, -10), new THREE.Vector3(0, 0, 10)]);
-        const zLine = new THREE.Line(zLineGeo, new THREE.LineBasicMaterial({ color: 0x0000ff }));
+        const zLineGeo = new THREE.BufferGeometry().setFromPoints([new THREE.Vector3(0, 0, -20), new THREE.Vector3(0, 0, 20)]);
+        const zLine = new THREE.Line(zLineGeo, new THREE.LineBasicMaterial({ color: 0x007aff, linewidth: 2 }));
         this.scene.add(zLine);
 
-        // Floor
+        // Floor (chiaro auto-illuminato)
         const planeGeo = new THREE.PlaneGeometry(100, 100);
-        const planeMat = new THREE.MeshStandardMaterial({ color: 0x222222, roughness: 0.8 });
+        const planeMat = new THREE.MeshBasicMaterial({ color: 0xe5e5ea });
         const floor = new THREE.Mesh(planeGeo, planeMat);
         floor.rotation.x = -Math.PI / 2;
         floor.position.y = -0.01; // Just below grid
         floor.name = "Floor";
-        floor.receiveShadow = true;
         this.scene.add(floor);
 
         // Resize Observer
