@@ -882,6 +882,33 @@ export class UIManager {
             };
         }
 
+        // Binding Viewport / Grid Settings
+        const gridCenterColor = document.getElementById('grid-center-color');
+        if (gridCenterColor) gridCenterColor.oninput = (e) => {
+            this.app.sceneManager.updateGrid(undefined, undefined, e.target.value, undefined);
+            this.app.editor.gridCenterColor = e.target.value;
+        };
+
+        const gridColor = document.getElementById('grid-color');
+        if (gridColor) gridColor.oninput = (e) => {
+            this.app.sceneManager.updateGrid(undefined, undefined, undefined, e.target.value);
+            this.app.editor.gridColor = e.target.value;
+        };
+
+        const gridSize = document.getElementById('grid-size');
+        if (gridSize) gridSize.onchange = (e) => {
+            const val = parseInt(e.target.value) || 40;
+            this.app.sceneManager.updateGrid(val, undefined, undefined, undefined);
+            this.app.editor.gridSize = val;
+        };
+
+        const gridDivisions = document.getElementById('grid-divisions');
+        if (gridDivisions) gridDivisions.onchange = (e) => {
+            const val = parseInt(e.target.value) || 40;
+            this.app.sceneManager.updateGrid(undefined, val, undefined, undefined);
+            this.app.editor.gridDivisions = val;
+        };
+
         // Binding HDR & Post processing
         const btnHdrUpload = document.getElementById('btn-hdr-upload');
         if (btnHdrUpload) {

@@ -30,8 +30,35 @@ export class SceneManager {
         this.skyboxTexture = null;
         this.skyboxIntensity = 1.0;
         this.skyboxVisible = true;
+        // Grid custom properties
+        this.gridSize = 40;
+        this.gridDivisions = 40;
+        this.gridCenterColor = '#555555';
+        this.gridColor = '#888888';
+        this.gridHelperRef = null;
     }
 
+    updateGrid(size, divisions, centerColor, gridColor) {
+        if (size !== undefined) this.gridSize = size;
+        if (divisions !== undefined) this.gridDivisions = divisions;
+        if (centerColor !== undefined) this.gridCenterColor = centerColor;
+        if (gridColor !== undefined) this.gridColor = gridColor;
+
+        if (this.gridHelperRef) {
+            this.scene.remove(this.gridHelperRef);
+        }
+
+        const newGrid = new THREE.GridHelper(
+            this.gridSize,
+            this.gridDivisions,
+            new THREE.Color(this.gridCenterColor),
+            new THREE.Color(this.gridColor)
+        );
+        newGrid.name = "CustomGridHelper";
+        this.scene.add(newGrid);
+        this.gridHelperRef = newGrid;
+    }
+}
     init() {
         // Scene Setup
         this.scene = new THREE.Scene();
@@ -96,6 +123,7 @@ export class SceneManager {
         // Grid (scura per risaltare su sfondo chiaro)
         const grid = new THREE.GridHelper(40, 40, 0x555555, 0x888888);
         this.scene.add(grid);
+        this.gridHelperRef = grid;
 
         // Custom X and Z axes (Red and Blue)
         const xLineGeo = new THREE.BufferGeometry().setFromPoints([new THREE.Vector3(-20, 0, 0), new THREE.Vector3(20, 0, 0)]);

@@ -54,6 +54,11 @@ export class Editor {
         this.gameCyberpunkAberration = 0.3;
         this.gameCyberpunkScanlines = 0.1;
         this.gamePbrActive = false;
+        // Viewport Grid defaults
+        this.gridSize = 40;
+        this.gridDivisions = 40;
+        this.gridCenterColor = '#555555';
+        this.gridColor = '#888888';
     }
 
     init() {
