@@ -87,10 +87,10 @@ body { margin: 0; padding: 0; width: 100vw; height: 100vh; background-color: var
 .asset-label { font-size: 11px; color: #ccc; text-align: center; padding: 0 5px; word-break: break-word; }
 
 .asset-menu {
-    position: absolute; bottom: 20px; left: 20px; /* Dynamic */
+    position: fixed;
     background: #252525; border: 1px solid #444; border-radius: 4px;
     box-shadow: 0 4px 12px rgba(0,0,0,0.5);
-    display: none; flex-direction: column; z-index: 1000; min-width: 150px;
+    display: none; flex-direction: column; z-index: 10000; min-width: 150px;
 }
 .asset-menu-item {
     padding: 8px 12px; cursor: pointer; font-size: 12px; color: #ddd;
