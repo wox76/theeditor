@@ -579,10 +579,13 @@ export class UIManager {
     }
 
     setupPanels() {
-        document.getElementById('btn-game-props').onclick = () => { 
-            this.app.editor.select(null); 
-            this.setActivePropTab('game'); 
-        };
+        const btnGameProps = document.getElementById('btn-game-props');
+        if (btnGameProps) {
+            btnGameProps.onclick = () => { 
+                this.app.editor.select(null); 
+                this.setActivePropTab('game'); 
+            };
+        }
         document.getElementById('btn-import').onclick = () => document.getElementById('glb-input').click();
         document.getElementById('glb-input').onchange = (e) => {
             const file = e.target.files[0];
@@ -700,9 +703,8 @@ export class UIManager {
         // ── End Screen Config ────────────────────────────────────────────────
         const btnConfigEnd = document.getElementById('btn-config-endscreen');
         if (btnConfigEnd) btnConfigEnd.onclick = () => {
-            // Open Game Properties panel and scroll to End Screen section
-            const gamePropsBtn = document.getElementById('btn-game-props');
-            if (gamePropsBtn) gamePropsBtn.click();
+            // Open Game Properties tab and scroll to End Screen section
+            this.setActivePropTab('game');
             setTimeout(() => {
                 const endTitle = document.getElementById('endscreen-title-input');
                 if (endTitle) endTitle.scrollIntoView({ behavior: 'smooth', block: 'center' });
