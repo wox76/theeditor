@@ -1312,6 +1312,27 @@ export class Editor {
         const promises = this._restoreSceneData(sceneData);
         await Promise.all(promises);
 
+        // Se dopo il caricamento non c'è alcun Player in scena, creane uno di default con le luci
+        const hasPlayer = this.objects.some(o => o.userData && o.userData.isPlayer);
+        if (!hasPlayer) {
+            const player = PlayerFactory.createPlayer(this.objects.length);
+            player.position.set(0, 1, 0);
+            this.addObject(player);
+            
+            // Aggiungi anche luci se mancano
+            const sceneLights = this.app.sceneManager.scene.children.filter(c => c.isLight);
+            if (sceneLights.length === 0) {
+                const ambientLight = new THREE.AmbientLight(0xffffff, 0.6);
+                ambientLight.name = "DefaultAmbientLight";
+                this.app.sceneManager.scene.add(ambientLight);
+
+                const dirLight = new THREE.DirectionalLight(0xffffff, 0.8);
+                dirLight.position.set(5, 10, 7);
+                dirLight.name = "DefaultDirectionalLight";
+                this.app.sceneManager.scene.add(dirLight);
+            }
+        }
+
         if (this.app.ui.renderLevelList) this.app.ui.renderLevelList();
         this.app.ui.rebuildLibrary();
         this.app.ui.update();
