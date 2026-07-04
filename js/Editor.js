@@ -170,12 +170,12 @@ export class Editor {
         this.app.sceneManager.setBloomEffect(this.gameBloomEffect, this.gameBloomStrength, this.gameBloomRadius);
         this.app.sceneManager.setCyberpunkEffect(this.gameCyberpunkEffect, this.gameCyberpunkAberration, this.gameCyberpunkScanlines);
 
-        // Se non ci sono livelli inizializzati, crea la scena di default (griglia, camera e player)
+        // Se non ci sono oggetti in scena, crea la scena di default (griglia, camera, luci e player)
         setTimeout(() => {
-            if (this.levels.length === 0 && this.objects.length === 0) {
+            if (this.objects.length === 0) {
                 this.setupInitialDefaultScene();
             }
-        }, 100);
+        }, 150);
     }
 
 
@@ -1269,9 +1269,23 @@ export class Editor {
     setupInitialDefaultScene() {
         this.clearScene();
         this.addCamera();
+
+        // 1. Aggiungi Player di default
         const player = PlayerFactory.createPlayer(this.objects.length);
         player.position.set(0, 1, 0);
         this.addObject(player);
+
+        // 2. Aggiungi Luce Ambientale di default
+        const ambientLight = new THREE.AmbientLight(0xffffff, 0.6);
+        ambientLight.name = "DefaultAmbientLight";
+        this.app.sceneManager.scene.add(ambientLight);
+
+        // 3. Aggiungi Luce Direzionale di default
+        const dirLight = new THREE.DirectionalLight(0xffffff, 0.8);
+        dirLight.position.set(5, 10, 7);
+        dirLight.name = "DefaultDirectionalLight";
+        this.app.sceneManager.scene.add(dirLight);
+
         this.app.ui.rebuildLibrary();
         this.app.ui.update();
     }
