@@ -965,8 +965,8 @@ export class Editor {
         if (index < 0 || index >= this.levels.length) return;
         this.levels[index].data = this.getLevelSerializedData();
         if (this.app.ui.renderLevelList) this.app.ui.renderLevelList();
-        // Persisti fisicamente sul disco invocando il salvataggio del progetto
-        this.saveProject();
+        // Persisti fisicamente sul disco passando true per saltare il sync ridondante ed evitare loop
+        this.saveProject(true);
     }
 
     /** Load a level by index into the editor */
@@ -1115,9 +1115,9 @@ export class Editor {
         return promises;
     }
 
-    saveProject() {
+    saveProject(skipSync = false) {
         // Sync current active level before saving project file
-        if (this.currentLevelIndex >= 0) {
+        if (!skipSync && this.currentLevelIndex >= 0) {
             this.updateLevel(this.currentLevelIndex);
         }
 
