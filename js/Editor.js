@@ -45,6 +45,14 @@ export class Editor {
         this.gameEndVideoAspect = 'cover'; // cover | contain | 16/9 | vertical | horizontal
         this.gameEndMusic = null;
         this.gameEndMusicFilename = '';
+
+        // Default Post Processing effects active
+        this.gameBloomEffect = true;
+        this.gameBloomStrength = 1.5;
+        this.gameBloomRadius = 0.4;
+        this.gameCyberpunkEffect = true;
+        this.gameCyberpunkAberration = 0.3;
+        this.gameCyberpunkScanlines = 0.1;
     }
 
     init() {
@@ -156,6 +164,10 @@ export class Editor {
                 }
             }
         });
+
+        // Applica effetti grafici di default a SceneManager
+        this.app.sceneManager.setBloomEffect(this.gameBloomEffect, this.gameBloomStrength, this.gameBloomRadius);
+        this.app.sceneManager.setCyberpunkEffect(this.gameCyberpunkEffect, this.gameCyberpunkAberration, this.gameCyberpunkScanlines);
 
         // Se non ci sono livelli inizializzati, crea la scena di default (griglia, camera e player)
         setTimeout(() => {
