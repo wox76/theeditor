@@ -504,6 +504,59 @@ body { margin: 0; padding: 0; width: 100vw; height: 100vh; background-color: var
 .tool-btn.game-view-active { background-color: #00bcd4; color: white; box-shadow: 0 0 8px rgba(0,188,212,0.5); }
 
 
+/* ========== ACCORDION FOR GAME PROPERTIES ========== */
+.game-accordion-header {
+    background: rgba(255,255,255,0.03);
+    border: 1px solid rgba(255,255,255,0.07);
+    border-radius: 6px;
+    padding: 8px 12px;
+    margin-top: 10px;
+    cursor: pointer;
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    font-size: 11px;
+    font-weight: bold;
+    user-select: none;
+    transition: background 0.15s ease, border-color 0.15s ease;
+}
+.game-accordion-header:hover {
+    background: rgba(255,255,255,0.06);
+    border-color: rgba(255,255,255,0.12);
+}
+.game-accordion-header .arrow {
+    font-size: 9px;
+    color: #888;
+    transition: transform 0.2s ease;
+}
+.game-accordion-header.active {
+    border-bottom-left-radius: 0;
+    border-bottom-right-radius: 0;
+    background: rgba(235,123,51,0.05);
+    border-color: rgba(235,123,51,0.2);
+}
+.game-accordion-header.active .arrow {
+    transform: rotate(90deg);
+    color: var(--accent);
+}
+.game-accordion-content {
+    background: rgba(0,0,0,0.15);
+    border: 1px solid rgba(255,255,255,0.05);
+    border-top: none;
+    border-bottom-left-radius: 6px;
+    border-bottom-right-radius: 6px;
+    padding: 10px;
+    display: none;
+    flex-direction: column;
+    gap: 8px;
+    margin-bottom: 5px;
+}
+.game-accordion-content.open {
+    display: flex;
+}
+
+
+
 /* ========== VERTICAL PROPERTY TABS ========== */
 #properties-panel {
     display: flex;
