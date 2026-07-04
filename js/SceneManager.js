@@ -38,27 +38,7 @@ export class SceneManager {
         this.gridHelperRef = null;
     }
 
-    updateGrid(size, divisions, centerColor, gridColor) {
-        if (size !== undefined) this.gridSize = size;
-        if (divisions !== undefined) this.gridDivisions = divisions;
-        if (centerColor !== undefined) this.gridCenterColor = centerColor;
-        if (gridColor !== undefined) this.gridColor = gridColor;
 
-        if (this.gridHelperRef) {
-            this.scene.remove(this.gridHelperRef);
-        }
-
-        const newGrid = new THREE.GridHelper(
-            this.gridSize,
-            this.gridDivisions,
-            new THREE.Color(this.gridCenterColor),
-            new THREE.Color(this.gridColor)
-        );
-        newGrid.name = "CustomGridHelper";
-        this.scene.add(newGrid);
-        this.gridHelperRef = newGrid;
-    }
-}
     init() {
         // Scene Setup
         this.scene = new THREE.Scene();
@@ -370,5 +350,27 @@ export class SceneManager {
         } else {
             this.scene.background = new THREE.Color(0x222222);
         }
+    }
+
+
+    updateGrid(size, divisions, centerColor, gridColor) {
+        if (size !== undefined) this.gridSize = size;
+        if (divisions !== undefined) this.gridDivisions = divisions;
+        if (centerColor !== undefined) this.gridCenterColor = centerColor;
+        if (gridColor !== undefined) this.gridColor = gridColor;
+
+        if (this.gridHelperRef) {
+            this.scene.remove(this.gridHelperRef);
+        }
+
+        const newGrid = new THREE.GridHelper(
+            this.gridSize,
+            this.gridDivisions,
+            new THREE.Color(this.gridCenterColor),
+            new THREE.Color(this.gridColor)
+        );
+        newGrid.name = "CustomGridHelper";
+        this.scene.add(newGrid);
+        this.gridHelperRef = newGrid;
     }
 }
