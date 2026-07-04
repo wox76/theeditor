@@ -982,6 +982,10 @@ export class Editor {
     /** Internal: restore scene from data array */
     _restoreSceneData(sceneData) {
         const promises = [];
+        if (!Array.isArray(sceneData)) {
+            console.warn("[Editor] _restoreSceneData: sceneData non è un array valido, reimpostato a vuoto.");
+            sceneData = [];
+        }
         sceneData.forEach((d) => {
             let obj;
             const uData = d.userData || {};
