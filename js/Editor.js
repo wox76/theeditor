@@ -970,24 +970,51 @@ export class Editor {
     }
 
     /** Load a level by index into the editor */
-    loadLevelByIndex(index) {
+    async loadLevelByIndex(index) {
         if (index < 0 || index >= this.levels.length) {
             console.warn('Level index out of range:', index);
             return;
         }
         const level = this.levels[index];
         try {
-            const rootData = JSON.parse(level.data);
+            let rootData = null;
+            // Se in memoria non abbiamo i dati del livello, scarichiamoli dal file su disco tramite server
+            if (!level.data) {
+                let filename = level.externalFilename || level.name.toLowerCase().replace(/\s+/g, '_');
+                if (!filename.endsWith('.json')) {
+                    filename += '.json';
+                }
+                console.log(`[Editor] Scaricamento del file di livello: ${filename}`);
+                const res = await fetch(`./projects/${this.projectName}/levels/${filename}?t=${Date.now()}`);
+                if (res.ok) {
+                    rootData = await res.json();
+                    level.data = JSON.stringify(rootData);
+                } else {
+                    console.warn(`[Editor] Impossibile caricare il file di livello da disco, inizializzo vuoto.`);
+                    rootData = { scene: [], library: [] };
+                }
+            } else {
+                rootData = JSON.parse(level.data);
+            }
+
             const sceneData = rootData.scene || rootData;
             this.clearScene();
             if (this.app.ui.restoreLibrary) this.app.ui.restoreLibrary(rootData.library || []);
-            this._restoreSceneData(sceneData);
+            
+            // Attendiamo il completamento del ripristino di tutti i modelli asincroni
+            const restorePromises = this._restoreSceneData(sceneData);
+            if (restorePromises && restorePromises.length > 0) {
+                await Promise.all(restorePromises);
+            }
+
             this.currentLevelIndex = index;
             if (this.app.ui.renderLevelList) this.app.ui.renderLevelList();
             this.app.ui.rebuildLibrary();
             this.app.ui.update();
             this.updateLinks();
-        } catch (err) { console.error('Error loading level:', err); }
+        } catch (err) { 
+            console.error('Error loading level:', err); 
+        }
     }
 
     /** Internal: restore scene from data array */

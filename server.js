@@ -356,14 +356,20 @@ const server = http.createServer((req, res) => {
                 );
 
                 // 2. Salva i singoli file dei livelli
+                console.log(`[Server DEBUG] Ricevuto levels da salvare. Conteggio: ${Array.isArray(levels) ? levels.length : 0}`);
                 if (Array.isArray(levels)) {
                     levels.forEach(lvl => {
+                        console.log(`[Server DEBUG] Livello: filename="${lvl.filename}", lunghezza data=${lvl.data ? lvl.data.length : 0}`);
                         if (lvl.filename && lvl.data) {
                             const dataToSave = typeof lvl.data === 'string' ? JSON.parse(lvl.data) : lvl.data;
+                            const targetFile = path.join(levelsPath, lvl.filename);
                             fs.writeFileSync(
-                                path.join(levelsPath, lvl.filename),
+                                targetFile,
                                 JSON.stringify(dataToSave, null, 2)
                             );
+                            console.log(`[Server DEBUG] Scritto file: ${targetFile}`);
+                        } else {
+                            console.warn(`[Server DEBUG] Livello ignorato (filename o data mancanti):`, lvl);
                         }
                     });
                 }
