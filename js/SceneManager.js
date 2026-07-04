@@ -5,6 +5,8 @@ import { RenderPass } from 'three/addons/postprocessing/RenderPass.js';
 import { ShaderPass } from 'three/addons/postprocessing/ShaderPass.js';
 import { OutputPass } from 'three/addons/postprocessing/OutputPass.js';
 import { PixelShader } from './postprocessing/PixelShader.js';
+import { UnrealBloomPass } from 'three/addons/postprocessing/UnrealBloomPass.js';
+import { CyberpunkShader } from './postprocessing/CyberpunkShader.js';
 
 export class SceneManager {
     constructor(app) {
@@ -15,9 +17,19 @@ export class SceneManager {
         this.viewport = document.getElementById('viewport');
         this.composer = null;
         this.pixelPass = null;
+        this.bloomPass = null;
+        this.cyberpunkPass = null;
         this.outputPass = null;
         this.usePixelShader = false;
+        this.useBloom = false;
+        this.useCyberpunk = false;
+        this.pbrExposure = 1.0;
         this.hasSplatEnv = false; // When true, bypass composer for Spark compatibility
+        this.skyboxData = null;
+        this.skyboxFilename = '';
+        this.skyboxTexture = null;
+        this.skyboxIntensity = 1.0;
+        this.skyboxVisible = true;
     }
 
     init() {
@@ -45,6 +57,20 @@ export class SceneManager {
         this.pixelPass.uniforms['pixelSize'].value = 6;
         this.pixelPass.enabled = false;
         this.composer.addPass(this.pixelPass);
+
+        this.bloomPass = new UnrealBloomPass(
+            new THREE.Vector2(window.innerWidth, window.innerHeight),
+            1.5, // strength
+            0.4, // radius
+            0.85 // threshold
+        );
+        this.bloomPass.enabled = false;
+        this.composer.addPass(this.bloomPass);
+
+        this.cyberpunkPass = new ShaderPass(CyberpunkShader);
+        this.cyberpunkPass.uniforms['resolution'].value = new THREE.Vector2(window.innerWidth, window.innerHeight);
+        this.cyberpunkPass.enabled = false;
+        this.composer.addPass(this.cyberpunkPass);
 
         this.outputPass = new OutputPass();
         this.composer.addPass(this.outputPass);
@@ -112,6 +138,9 @@ export class SceneManager {
             if (this.pixelPass) {
                 this.pixelPass.uniforms['resolution'].value.set(width, height);
             }
+            if (this.cyberpunkPass) {
+                this.cyberpunkPass.uniforms['resolution'].value.set(width, height);
+            }
         }
     }
 
@@ -120,7 +149,7 @@ export class SceneManager {
             // Spark SplatMesh requires direct renderer.render() - bypass composer when SplatEnv is present
             if (this.hasSplatEnv) {
                 this.renderer.render(this.scene, this.camera);
-            } else if (this.usePixelShader && this.composer) {
+            } else if ((this.usePixelShader || this.useBloom || this.useCyberpunk) && this.composer) {
                 this.composer.render();
             } else {
                 this.renderer.render(this.scene, this.camera);
@@ -136,11 +165,34 @@ export class SceneManager {
         }
     }
 
+    setBloomEffect(enabled, strength, radius) {
+        this.useBloom = enabled;
+        if (this.bloomPass) {
+            this.bloomPass.enabled = enabled;
+            if (strength !== undefined) this.bloomPass.strength = strength;
+            if (radius !== undefined) this.bloomPass.radius = radius;
+        }
+    }
+
+    setCyberpunkEffect(enabled, aberration, scanlines) {
+        this.useCyberpunk = enabled;
+        if (this.cyberpunkPass) {
+            this.cyberpunkPass.enabled = enabled;
+            if (aberration !== undefined) this.cyberpunkPass.uniforms['chromaticAberration'].value = aberration;
+            if (scanlines !== undefined) this.cyberpunkPass.uniforms['scanlinesIntensity'].value = scanlines;
+        }
+    }
+
+    setExposure(val) {
+        this.pbrExposure = val;
+        this.renderer.toneMappingExposure = val;
+    }
+
     setPBROutput(enabled) {
         if (enabled) {
             this.renderer.outputColorSpace = THREE.SRGBColorSpace;
             this.renderer.toneMapping = THREE.ACESFilmicToneMapping;
-            this.renderer.toneMappingExposure = 1.0;
+            this.renderer.toneMappingExposure = this.pbrExposure;
         } else {
             this.renderer.outputColorSpace = THREE.LinearSRGBColorSpace;
             this.renderer.toneMapping = THREE.NoToneMapping;
@@ -211,5 +263,83 @@ export class SceneManager {
         this.scene.traverse((child) => {
             if (child.isMesh && child.material) child.material.needsUpdate = true;
         });
+    }
+
+    setSkybox(dataUrlOrNull, filename) {
+        this.skyboxData = dataUrlOrNull;
+        this.skyboxFilename = filename || '';
+
+        if (!dataUrlOrNull) {
+            if (this.skyboxTexture) {
+                this.skyboxTexture.dispose();
+                this.skyboxTexture = null;
+            }
+            this.scene.background = new THREE.Color(0x222222);
+            this.scene.environment = null;
+            this.scene.traverse((child) => {
+                if (child.isMesh && child.material) child.material.needsUpdate = true;
+            });
+            return;
+        }
+
+        const isHDR = filename.toLowerCase().endsWith('.hdr') || dataUrlOrNull.startsWith('data:image/vnd.radial') || dataUrlOrNull.startsWith('data:application/octet-stream');
+
+        const applyTexture = (texture) => {
+            texture.mapping = THREE.EquirectangularReflectionMapping;
+            if (isHDR) {
+                texture.colorSpace = THREE.LinearSRGBColorSpace;
+            } else {
+                texture.colorSpace = THREE.SRGBColorSpace;
+            }
+            this.scene.background = this.skyboxVisible ? texture : new THREE.Color(0x222222);
+            this.scene.environment = texture;
+
+            // Set intensities
+            this.scene.environmentIntensity = this.skyboxIntensity;
+            this.scene.backgroundIntensity = this.skyboxIntensity;
+
+            if (this.skyboxTexture) this.skyboxTexture.dispose();
+            this.skyboxTexture = texture;
+
+            this.scene.traverse((child) => {
+                if (child.isMesh && child.material) child.material.needsUpdate = true;
+            });
+        };
+
+        if (isHDR) {
+            import('three/addons/loaders/RGBELoader.js').then(({ RGBELoader }) => {
+                new RGBELoader().load(dataUrlOrNull, (texture) => {
+                    applyTexture(texture);
+                }, undefined, (err) => {
+                    console.error('Error loading HDR skybox:', err);
+                });
+            }).catch(err => {
+                console.error('Failed to import RGBELoader:', err);
+            });
+        } else {
+            new THREE.TextureLoader().load(dataUrlOrNull, (texture) => {
+                applyTexture(texture);
+            }, undefined, (err) => {
+                console.error('Error loading image skybox:', err);
+            });
+        }
+    }
+
+    setSkyboxIntensity(intensity) {
+        this.skyboxIntensity = intensity;
+        this.scene.environmentIntensity = intensity;
+        this.scene.backgroundIntensity = intensity;
+        this.scene.traverse((child) => {
+            if (child.isMesh && child.material) child.material.needsUpdate = true;
+        });
+    }
+
+    setSkyboxVisibility(visible) {
+        this.skyboxVisible = visible;
+        if (this.skyboxTexture) {
+            this.scene.background = visible ? this.skyboxTexture : new THREE.Color(0x222222);
+        } else {
+            this.scene.background = new THREE.Color(0x222222);
+        }
     }
 }

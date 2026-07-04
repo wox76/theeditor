@@ -861,6 +861,124 @@ export class UIManager {
             };
         }
 
+        // Binding HDR & Post processing
+        const btnHdrUpload = document.getElementById('btn-hdr-upload');
+        if (btnHdrUpload) {
+            btnHdrUpload.onclick = () => {
+                const input = document.createElement('input');
+                input.type = 'file'; input.accept = '.hdr';
+                input.onchange = (e) => {
+                    const file = e.target.files[0];
+                    if (file) {
+                        const reader = new FileReader();
+                        reader.onload = (ev) => {
+                            const dataUrl = ev.target.result;
+                            this.app.sceneManager.setSkybox(dataUrl, file.name);
+                            this.app.editor.gameSkyboxData = dataUrl;
+                            this.app.editor.gameSkyboxFilename = file.name;
+                            document.getElementById('hdr-filename').innerText = file.name;
+                            document.getElementById('btn-hdr-clear').classList.remove('hidden');
+                        };
+                        reader.readAsDataURL(file);
+                    }
+                };
+                input.click();
+            };
+        }
+
+        const btnHdrClear = document.getElementById('btn-hdr-clear');
+        if (btnHdrClear) {
+            btnHdrClear.onclick = () => {
+                this.app.sceneManager.setSkybox(null, '');
+                this.app.editor.gameSkyboxData = null;
+                this.app.editor.gameSkyboxFilename = '';
+                document.getElementById('hdr-filename').innerText = '(Default Sky)';
+                btnHdrClear.classList.add('hidden');
+            };
+        }
+
+        const hdrIntensity = document.getElementById('hdr-intensity');
+        if (hdrIntensity) hdrIntensity.oninput = (e) => {
+            const val = parseFloat(e.target.value);
+            this.app.sceneManager.setSkyboxIntensity(val);
+            this.app.editor.gameSkyboxIntensity = val;
+        };
+
+        const gamePbr = document.getElementById('game-pbr');
+        if (gamePbr) gamePbr.onchange = (e) => {
+            this.app.sceneManager.setPBROutput(e.target.checked);
+            this.app.editor.gamePbrActive = e.target.checked;
+        };
+
+        const gameExposure = document.getElementById('game-exposure');
+        if (gameExposure) gameExposure.oninput = (e) => {
+            const val = parseFloat(e.target.value);
+            this.app.sceneManager.setExposure(val);
+            this.app.editor.gameExposure = val;
+        };
+
+        const gameShadows = document.getElementById('game-shadows');
+        if (gameShadows) gameShadows.onchange = (e) => {
+            this.app.sceneManager.setShadows(e.target.checked);
+            this.app.editor.gameShadows = e.target.checked;
+        };
+
+        const gameReflections = document.getElementById('game-reflections');
+        if (gameReflections) gameReflections.onchange = (e) => {
+            this.app.sceneManager.setReflections(e.target.checked);
+            this.app.editor.gameReflections = e.target.checked;
+        };
+
+        // Bloom
+        const bloomEnable = document.getElementById('bloom-enable');
+        if (bloomEnable) bloomEnable.onchange = (e) => {
+            const st = parseFloat(document.getElementById('bloom-strength').value);
+            const rd = parseFloat(document.getElementById('bloom-radius').value);
+            this.app.sceneManager.setBloomEffect(e.target.checked, st, rd);
+            this.app.editor.gameBloomEffect = e.target.checked;
+        };
+
+        const bloomStrength = document.getElementById('bloom-strength');
+        if (bloomStrength) bloomStrength.oninput = (e) => {
+            const active = document.getElementById('bloom-enable').checked;
+            const val = parseFloat(e.target.value);
+            this.app.sceneManager.setBloomEffect(active, val, undefined);
+            this.app.editor.gameBloomStrength = val;
+        };
+
+        const bloomRadius = document.getElementById('bloom-radius');
+        if (bloomRadius) bloomRadius.oninput = (e) => {
+            const active = document.getElementById('bloom-enable').checked;
+            const val = parseFloat(e.target.value);
+            this.app.sceneManager.setBloomEffect(active, undefined, val);
+            this.app.editor.gameBloomRadius = val;
+        };
+
+        // Vignette
+        const vignetteEnable = document.getElementById('vignette-enable');
+        if (vignetteEnable) vignetteEnable.onchange = (e) => {
+            const ab = parseFloat(document.getElementById('vignette-aberration').value);
+            const sc = parseFloat(document.getElementById('vignette-scanlines').value);
+            this.app.sceneManager.setCyberpunkEffect(e.target.checked, ab, sc);
+            this.app.editor.gameCyberpunkEffect = e.target.checked;
+        };
+
+        const vignetteAberration = document.getElementById('vignette-aberration');
+        if (vignetteAberration) vignetteAberration.oninput = (e) => {
+            const active = document.getElementById('vignette-enable').checked;
+            const val = parseFloat(e.target.value);
+            this.app.sceneManager.setCyberpunkEffect(active, val, undefined);
+            this.app.editor.gameCyberpunkAberration = val;
+        };
+
+        const vignetteScanlines = document.getElementById('vignette-scanlines');
+        if (vignetteScanlines) vignetteScanlines.oninput = (e) => {
+            const active = document.getElementById('vignette-enable').checked;
+            const val = parseFloat(e.target.value);
+            this.app.sceneManager.setCyberpunkEffect(active, undefined, val);
+            this.app.editor.gameCyberpunkScanlines = val;
+        };
+
         // Binding Dialog
         const dlgQuest = document.getElementById('dlg-question');
         if (dlgQuest) dlgQuest.oninput = (e) => { if (this.app.editor.selected) this.app.editor.selected.userData.dialogQuestion = e.target.value; };
@@ -1556,6 +1674,52 @@ export class UIManager {
             document.getElementById('section-game').classList.remove('hidden');
             document.getElementById('game-title-input').value = this.app.editor.gameTitle || 'Web 3D Game';
             document.getElementById('game-subtitle-input').value = this.app.editor.gameSplashSubtitle || '3D Editor Engine';
+            
+            // Popola campi HDR & Ambiente
+            const hdrFilenameEl = document.getElementById('hdr-filename');
+            if (hdrFilenameEl) {
+                hdrFilenameEl.innerText = this.app.editor.gameSkyboxFilename || '(Default Sky)';
+            }
+            const btnHdrClearEl = document.getElementById('btn-hdr-clear');
+            if (btnHdrClearEl) {
+                btnHdrClearEl.classList.toggle('hidden', !this.app.editor.gameSkyboxData);
+            }
+            const hdrIntensityEl = document.getElementById('hdr-intensity');
+            if (hdrIntensityEl) {
+                hdrIntensityEl.value = this.app.editor.gameSkyboxIntensity !== undefined ? this.app.editor.gameSkyboxIntensity : 1.0;
+            }
+            const gamePbrEl = document.getElementById('game-pbr');
+            if (gamePbrEl) {
+                gamePbrEl.checked = this.app.editor.gamePbrActive !== false;
+            }
+            const gameExposureEl = document.getElementById('game-exposure');
+            if (gameExposureEl) {
+                gameExposureEl.value = this.app.editor.gameExposure !== undefined ? this.app.editor.gameExposure : 1.0;
+            }
+            const gameShadowsEl = document.getElementById('game-shadows');
+            if (gameShadowsEl) {
+                gameShadowsEl.checked = !!this.app.editor.gameShadows;
+            }
+            const gameReflectionsEl = document.getElementById('game-reflections');
+            if (gameReflectionsEl) {
+                gameReflectionsEl.checked = !!this.app.editor.gameReflections;
+            }
+
+            // Popola Bloom
+            const bloomEnableEl = document.getElementById('bloom-enable');
+            if (bloomEnableEl) bloomEnableEl.checked = !!this.app.editor.gameBloomEffect;
+            const bloomStrengthEl = document.getElementById('bloom-strength');
+            if (bloomStrengthEl) bloomStrengthEl.value = this.app.editor.gameBloomStrength !== undefined ? this.app.editor.gameBloomStrength : 1.5;
+            const bloomRadiusEl = document.getElementById('bloom-radius');
+            if (bloomRadiusEl) bloomRadiusEl.value = this.app.editor.gameBloomRadius !== undefined ? this.app.editor.gameBloomRadius : 0.4;
+
+            // Popola Vignette
+            const vignetteEnableEl = document.getElementById('vignette-enable');
+            if (vignetteEnableEl) vignetteEnableEl.checked = !!this.app.editor.gameCyberpunkEffect;
+            const vignetteAberrationEl = document.getElementById('vignette-aberration');
+            if (vignetteAberrationEl) vignetteAberrationEl.value = this.app.editor.gameCyberpunkAberration !== undefined ? this.app.editor.gameCyberpunkAberration : 0.3;
+            const vignetteScanlinesEl = document.getElementById('vignette-scanlines');
+            if (vignetteScanlinesEl) vignetteScanlinesEl.value = this.app.editor.gameCyberpunkScanlines !== undefined ? this.app.editor.gameCyberpunkScanlines : 0.1;
             document.getElementById('game-splash-prompt-bg').value = this.app.editor.gameSplashPromptBg || 'rgba(255,255,255,0.1)';
             document.getElementById('game-splash-prompt-color').value = this.app.editor.gameSplashPromptColor || '#ffffff';
             

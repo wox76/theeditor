@@ -1034,8 +1034,97 @@
 
                             <!-- === TAB CONTENT: GAME === -->
                             <div class="prop-tab-content" data-tab="game" style="padding: 10px; overflow-y: auto; height: 100%;">
-                                <div id="section-game" class="hidden">
-                                    <!-- Il contenuto di section-game è gestito sotto -->
+                                <div id="section-game">
+                                    <div style="font-weight:bold; margin-bottom:12px; color:var(--accent);">🎮 Impostazioni Gioco</div>
+                                    <div class="prop-row"><span class="prop-label">Titolo</span><input id="game-title-input" type="text" class="prop-input" value="Web 3D Game"></div>
+                                    <div class="prop-row"><span class="prop-label">Sottotitolo</span><input id="game-subtitle-input" type="text" class="prop-input" value="3D Editor Engine"></div>
+                                    
+                                    <!-- HDR & Environment Settings -->
+                                    <div style="font-weight:bold; margin-top:15px; margin-bottom:8px; color:#ffff00;">☀️ HDR & Ambiente</div>
+                                    <div class="prop-row">
+                                        <span class="prop-label">Carica HDR (.hdr)</span>
+                                        <div style="flex:1; display:flex; flex-direction:column; gap:4px;">
+                                            <button class="btn-full" id="btn-hdr-upload" style="padding:4px; font-size:10px;">📂 Upload HDR</button>
+                                            <div id="hdr-filename" style="font-size:9px; color:#aaa; font-style:italic;">(Default Sky)</div>
+                                            <button id="btn-hdr-clear" class="btn-full danger hidden" style="padding:2px; font-size:9px;">✕ Rimuovi HDR</button>
+                                        </div>
+                                    </div>
+                                    <div class="prop-row">
+                                        <span class="prop-label">Intensità HDR</span>
+                                        <input id="hdr-intensity" type="range" min="0" max="5" step="0.1" value="1.0" class="prop-input">
+                                    </div>
+                                    <div class="prop-row">
+                                        <span class="prop-label">PBR Output</span>
+                                        <input id="game-pbr" type="checkbox" checked style="margin:0;">
+                                    </div>
+                                    <div class="prop-row">
+                                        <span class="prop-label">Esposizione</span>
+                                        <input id="game-exposure" type="range" min="0" max="3" step="0.1" value="1.0" class="prop-input">
+                                    </div>
+                                    <div class="prop-row">
+                                        <span class="prop-label">Ombre Attive</span>
+                                        <input id="game-shadows" type="checkbox" style="margin:0;">
+                                    </div>
+                                    <div class="prop-row">
+                                        <span class="prop-label">Riflessioni</span>
+                                        <input id="game-reflections" type="checkbox" style="margin:0;">
+                                    </div>
+
+                                    <!-- Bloom Settings -->
+                                    <div style="font-weight:bold; margin-top:15px; margin-bottom:8px; color:#ff4499;">✨ Effetto Bloom</div>
+                                    <div class="prop-row">
+                                        <span class="prop-label">Attiva Bloom</span>
+                                        <input id="bloom-enable" type="checkbox" style="margin:0;">
+                                    </div>
+                                    <div class="prop-row">
+                                        <span class="prop-label">Forza (Strength)</span>
+                                        <input id="bloom-strength" type="range" min="0" max="3" step="0.1" value="1.5" class="prop-input">
+                                    </div>
+                                    <div class="prop-row">
+                                        <span class="prop-label">Raggio (Radius)</span>
+                                        <input id="bloom-radius" type="range" min="0" max="2" step="0.1" value="0.4" class="prop-input">
+                                    </div>
+
+                                    <!-- Vignette & Cyberpunk Settings -->
+                                    <div style="font-weight:bold; margin-top:15px; margin-bottom:8px; color:#8844ff;">🎬 Effetto Vignetta</div>
+                                    <div class="prop-row">
+                                        <span class="prop-label">Attiva Vignetta</span>
+                                        <input id="vignette-enable" type="checkbox" style="margin:0;">
+                                    </div>
+                                    <div class="prop-row">
+                                        <span class="prop-label">Aberrazione</span>
+                                        <input id="vignette-aberration" type="range" min="0" max="1" step="0.05" value="0.3" class="prop-input">
+                                    </div>
+                                    <div class="prop-row">
+                                        <span class="prop-label">Scanlines</span>
+                                        <input id="vignette-scanlines" type="range" min="0" max="1" step="0.05" value="0.1" class="prop-input">
+                                    </div>
+
+                                    <!-- Splash Screen settings -->
+                                    <div style="font-weight:bold; margin-top:15px; margin-bottom:8px; color:#ff9900;">🖼️ Splash Screen</div>
+                                    <div class="prop-row" style="align-items:flex-start;">
+                                        <span class="prop-label">Carica Immagine</span>
+                                        <div style="flex:1; display:flex; flex-direction:column; gap:4px;">
+                                            <button class="btn-full" id="btn-splash-image" style="padding:4px; font-size:10px;">📂 Scegli Immagine</button>
+                                            <div id="splash-preview-container" style="display:none; height:40px; border:1px solid #333; overflow:hidden; border-radius:4px;">
+                                                <img id="splash-preview-img" style="width:100%; height:100%; object-fit:cover;">
+                                            </div>
+                                            <button id="btn-splash-clear" class="btn-full danger hidden" style="padding:2px; font-size:9px;">✕ Rimuovi Immagine</button>
+                                        </div>
+                                    </div>
+                                    <div class="prop-row">
+                                        <span class="prop-label">Splash BGM</span>
+                                        <div style="flex:1; display:flex; flex-direction:column; gap:4px;">
+                                            <button class="btn-full" id="btn-splash-music" style="padding:4px; font-size:10px;">🎵 Scegli Audio</button>
+                                            <div id="splash-music-filename" style="font-size:9px; color:#aaa; font-style:italic;">(None)</div>
+                                            <button id="btn-splash-music-clear" class="btn-full danger hidden" style="padding:2px; font-size:9px;">✕ Rimuovi Audio</button>
+                                        </div>
+                                    </div>
+
+                                    <!-- End Screen Config -->
+                                    <div style="font-weight:bold; margin-top:15px; margin-bottom:8px; color:#cc55cc;">🏁 End Screen</div>
+                                    <div class="prop-row"><span class="prop-label">Titolo</span><input id="endscreen-title-input" type="text" class="prop-input" placeholder="🏆 GIOCO COMPLETATO!"></div>
+                                    <div class="prop-row"><span class="prop-label">Sottotitolo</span><input id="endscreen-subtitle-input" type="text" class="prop-input" placeholder=""></div>
                                 </div>
                             </div> <!-- fine prop-tab-content game -->
 
