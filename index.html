@@ -137,8 +137,27 @@
                 </div>
                 <div class="resizer resizer-h" id="resizer-split"></div>
                 <div id="properties-panel">
-                    <div class="panel-header">Properties</div>
-                    <div class="panel-content">
+                    <div id="prop-tabs-container">
+                        <!-- Barra tab verticale -->
+                        <div id="prop-vtabs">
+                            <button class="prop-vtab active" data-tab="transform" title="Transform">
+                                <svg viewBox="0 0 24 24"><path d="M12 2L8 6h3v5H6V8L2 12l4 4v-3h5v5H8l4 4 4-4h-3v-5h5v3l4-4-4-4v3h-5V6h3L12 2z"/></svg>
+                                <span>Transform</span>
+                            </button>
+                            <button class="prop-vtab" data-tab="object" title="Object Properties">
+                                <svg viewBox="0 0 24 24"><path d="M12 2C6.48 2 2 6.48 2 12s4.48 10 10 10 10-4.48 10-10S17.52 2 12 2zm-2 14.5v-9l6 4.5-6 4.5z"/></svg>
+                                <span>Object</span>
+                            </button>
+                            <button class="prop-vtab" data-tab="game" title="Game Settings">
+                                <svg viewBox="0 0 24 24"><path d="M21 6H3c-1.1 0-2 .9-2 2v8c0 1.1.9 2 2 2h18c1.1 0 2-.9 2-2V8c0-1.1-.9-2-2-2zm-10 7H8v3H6v-3H3v-2h3V8h2v3h3v2zm4.5 2c-.83 0-1.5-.67-1.5-1.5S14.67 12 15.5 12s1.5.67 1.5 1.5S16.33 15 15.5 15zm3-3c-.83 0-1.5-.67-1.5-1.5S17.67 10 18.5 10s1.5.67 1.5 1.5S19.33 12 18.5 12z"/></svg>
+                                <span>Game</span>
+                            </button>
+                        </div>
+                        <!-- Contenuto tab -->
+                        <div id="prop-tab-contents" style="flex: 1; display: flex; flex-direction: column; overflow: hidden; height: 100%;">
+                            
+                            <!-- === TAB CONTENT: TRANSFORM === -->
+                            <div class="prop-tab-content active" data-tab="transform" style="padding: 10px; overflow-y: auto; height: 100%;">
                         <div id="section-transform" class="hidden">
                             <div style="margin-bottom:10px; padding-bottom:5px; border-bottom:1px solid #333;">
                                 <input id="obj-name-input" type="text" class="transform-input"
@@ -164,8 +183,11 @@
                                 <input id="t-sz" type="number" step="0.1" class="transform-input" placeholder="Z">
                             </div>
                         </div>
-
-                        <div id="section-player" class="hidden">
+                            </div> <!-- fine prop-tab-content transform -->
+                            
+                            <!-- === TAB CONTENT: OBJECT === -->
+                            <div class="prop-tab-content" data-tab="object" style="padding: 10px; overflow-y: auto; height: 100%;">
+                                <div id="section-player" class="hidden">
                             <div class="prop-row">
                                 <span class="prop-label">Tipology</span>
                                 <select id="p-typology" class="prop-input">
@@ -964,7 +986,17 @@
                                     title="Abilita collisioni fisiche con questo splat">
                             </div>
                         </div>
-                    </div>
+                            </div> <!-- fine prop-tab-content object -->
+
+                            <!-- === TAB CONTENT: GAME === -->
+                            <div class="prop-tab-content" data-tab="game" style="padding: 10px; overflow-y: auto; height: 100%;">
+                                <div id="section-game" class="hidden">
+                                    <!-- Il contenuto di section-game è gestito sotto -->
+                                </div>
+                            </div> <!-- fine prop-tab-content game -->
+
+                        </div> <!-- fine prop-tab-contents -->
+                    </div> <!-- fine prop-tabs-container -->
                 </div>
             </aside>
         </div>

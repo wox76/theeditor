@@ -14,6 +14,7 @@ export class UIManager {
 
     init() {
         this.setupToolbar();
+        this.setupPropertyTabs();
         this.setupPanels();
         this.setupInputs();
         this.setupResizers();
@@ -546,8 +547,40 @@ export class UIManager {
         const el = document.getElementById(id); if (el) el.classList.add('active');
     }
 
+    // ========== VERTICAL PROPERTY TABS ==========
+    setActivePropTab(tabName) {
+        document.querySelectorAll('.prop-vtab').forEach(b => {
+            b.classList.toggle('active', b.dataset.tab === tabName);
+        });
+        document.querySelectorAll('.prop-tab-content').forEach(c => {
+            c.classList.toggle('active', c.dataset.tab === tabName);
+        });
+        this._activePropTab = tabName;
+    }
+
+    setupPropertyTabs() {
+        const sectionGame = document.getElementById('section-game');
+        if (sectionGame) {
+            const gameTabContent = document.querySelector('.prop-tab-content[data-tab="game"]');
+            if (gameTabContent && !gameTabContent.contains(sectionGame)) {
+                sectionGame.classList.remove('hidden');
+                gameTabContent.innerHTML = '';
+                gameTabContent.appendChild(sectionGame);
+            }
+        }
+
+        document.querySelectorAll('.prop-vtab').forEach(btn => {
+            btn.onclick = () => this.setActivePropTab(btn.dataset.tab);
+        });
+
+        this._activePropTab = 'transform';
+    }
+
     setupPanels() {
-        document.getElementById('btn-game-props').onclick = () => { this.app.editor.select(null); document.getElementById('section-game').classList.remove('hidden'); };
+        document.getElementById('btn-game-props').onclick = () => { 
+            this.app.editor.select(null); 
+            this.setActivePropTab('game'); 
+        };
         document.getElementById('btn-import').onclick = () => document.getElementById('glb-input').click();
         document.getElementById('glb-input').onchange = (e) => {
             const file = e.target.files[0];
@@ -1468,6 +1501,7 @@ export class UIManager {
         document.getElementById('section-game').classList.add('hidden');
 
         if (!selected) {
+            this.setActivePropTab('game');
             // Show Game Settings if nothing selected
             document.getElementById('section-game').classList.remove('hidden');
             document.getElementById('game-title-input').value = this.app.editor.gameTitle || 'Web 3D Game';
@@ -1508,6 +1542,10 @@ export class UIManager {
             return;
         }
 
+        if (this._activePropTab === 'game') {
+            this.setActivePropTab('transform');
+        }
+
         document.getElementById('section-transform').classList.remove('hidden');
         document.getElementById('obj-name-input').value = selected.name;
         ['x', 'y', 'z'].forEach(axis => {
@@ -1517,6 +1555,7 @@ export class UIManager {
         });
 
         if (selected.userData.isPlayer) {
+            this.setActivePropTab('object');
             document.getElementById('section-player').classList.remove('hidden');
             // ... (rest of player updates handled by existing listeners/initial state but strictly inputs need refreshing)
             // Ideally should refresh inputs here too, but for brevity assuming static binding works for now or existing update logic was replaced?
@@ -1552,6 +1591,7 @@ export class UIManager {
             this.renderActionList(selected);
         }
         else if (selected.userData.isCamera) {
+            this.setActivePropTab('object');
             document.getElementById('section-camera').classList.remove('hidden');
             document.getElementById('c-type').value = selected.userData.type || 'TPS';
             document.getElementById('c-fov').value = selected.userData.fov || 60;
@@ -1564,7 +1604,10 @@ export class UIManager {
             if (type === 'SplatEnv') sectionId = 'section-splatenv';
 
             const el = document.getElementById(sectionId);
-            if (el) el.classList.remove('hidden');
+            if (el) {
+                this.setActivePropTab('object');
+                el.classList.remove('hidden');
+            }
 
             const prefix = type === 'Enemy' ? 'e' : type === 'Bonus' ? 'b' : type === 'Boss' ? 'bs' : type === 'PowerUp' ? 'pu' : type === 'Spawn' ? 'sp' : type === 'Goal' ? 'g' : type === 'Collision' ? 'col' : (type === 'catcher_base' || type === 'Catcher') ? 'c' : type === 'Model' ? 'm' : type === 'SplatEnv' ? 'se' : '';
 
