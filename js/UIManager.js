@@ -1810,12 +1810,16 @@ export class UIManager {
             return;
         }
 
+        if (!selected) {
+            return;
+        }
+
         if (this._activePropTab === 'game') {
             this.setActivePropTab('transform');
         }
 
         document.getElementById('section-transform').classList.remove('hidden');
-        document.getElementById('obj-name-input').value = selected.name;
+        document.getElementById('obj-name-input').value = selected.name || '';
         ['x', 'y', 'z'].forEach(axis => {
             const p = document.getElementById(`t-p${axis}`); if (p) p.value = selected.position[axis].toFixed(2);
             const r = document.getElementById(`t-r${axis}`); if (r) r.value = THREE.MathUtils.radToDeg(selected.rotation[axis]).toFixed(0);
