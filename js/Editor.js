@@ -720,7 +720,7 @@ export class Editor {
 
         if (type === 'Analyze') {
             mesh.userData.objectName = 'Oggetto da Analizzare';
-            mesh.userData.objectDescription = 'Descrizione dell'oggetto...';
+            mesh.userData.objectDescription = 'Descrizione dell\'oggetto...';
             mesh.userData.activationKey = 'e';
             mesh.userData.activationTouch = true;
             mesh.userData.glbSource = null;
