@@ -156,7 +156,15 @@ export class Editor {
                 }
             }
         });
+
+        // Se non ci sono livelli inizializzati, crea la scena di default (griglia, camera e player)
+        setTimeout(() => {
+            if (this.levels.length === 0 && this.objects.length === 0) {
+                this.setupInitialDefaultScene();
+            }
+        }, 100);
     }
+
 
     copy() {
         if (!this.selected) return;
