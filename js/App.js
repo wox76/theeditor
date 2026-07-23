@@ -10,6 +10,7 @@ class App {
         this.ui = new UIManager(this);
         this.game = new GameManager(this);
         
+        window.app = this;
         this.init();
     }
 

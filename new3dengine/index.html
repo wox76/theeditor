@@ -1,0 +1,415 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Unreal Engine 5 Web Editor</title>
+    <link rel="stylesheet" href="style.css">
+    <!-- Google Fonts for premium typography -->
+    <link rel="preconnect" href="https://fonts.googleapis.com">
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+    <link href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700&family=JetBrains+Mono:wght@400;500&display=swap" rel="stylesheet">
+    <!-- FontAwesome for UE5-style icons -->
+    <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css">
+    <!-- Three.js and Addons via ES Modules / CDNs -->
+    <script type="importmap">
+        {
+            "imports": {
+                "three": "https://unpkg.com/three@0.160.0/build/three.module.js",
+                "three/addons/": "https://unpkg.com/three@0.160.0/examples/jsm/"
+            }
+        }
+    </script>
+</head>
+<body>
+    <div id="editor-container">
+        <!-- Top Menu Bar (UE5 Style File/Edit/Tools) -->
+        <nav id="menu-bar">
+            <div class="menu-item-logo">
+                <span class="ue-u">U</span>
+            </div>
+            <div class="menu-dropdown">
+                <span>File</span>
+                <div class="dropdown-content">
+                    <a href="#" id="menu-new-scene"><i class="fa-solid fa-file"></i> New Level</a>
+                    <a href="#" id="menu-reset-scene"><i class="fa-solid fa-rotate-left"></i> Reset Level</a>
+                    <a href="#" id="menu-save-scene"><i class="fa-solid fa-floppy-disk"></i> Save Level</a>
+                    <a href="#" id="menu-load-scene"><i class="fa-solid fa-folder-open"></i> Load Level</a>
+                    <input type="file" id="scene-file-input" accept=".json" style="display: none;">
+                </div>
+            </div>
+            <div class="menu-dropdown">
+                <span>Edit</span>
+                <div class="dropdown-content">
+                    <a href="#" id="menu-delete-selected"><i class="fa-solid fa-trash"></i> Delete Selected <span class="shortcut">DEL</span></a>
+                </div>
+            </div>
+            <div class="menu-dropdown">
+                <span>Window</span>
+                <div class="dropdown-content">
+                    <a href="#" class="checked"><i class="fa-solid fa-check"></i> Outliner</a>
+                    <a href="#" class="checked"><i class="fa-solid fa-check"></i> Details</a>
+                    <a href="#" class="checked"><i class="fa-solid fa-check"></i> Content Browser</a>
+                    <a href="#" class="checked"><i class="fa-solid fa-check"></i> Sequencer</a>
+                </div>
+            </div>
+            <div class="menu-dropdown">
+                <span>Help</span>
+                <div class="dropdown-content">
+                    <a href="https://docs.unrealengine.com/" target="_blank"><i class="fa-solid fa-book"></i> Documentation</a>
+                    <a href="#" id="menu-about"><i class="fa-solid fa-circle-info"></i> About Web Engine 5</a>
+                </div>
+            </div>
+            <div class="project-name">MyProject (WebGPU/WebGL Prototype)</div>
+        </nav>
+
+        <!-- Main Toolbar -->
+        <header id="top-bar">
+            <div class="tool-group">
+                <button id="btn-select" class="tool-btn active" title="Selection Mode (Q)"><i class="fa-solid fa-arrow-pointer"></i></button>
+                <button id="btn-translate" class="tool-btn" title="Translate (W)"><i class="fa-solid fa-arrows-up-down-left-right"></i></button>
+                <button id="btn-rotate" class="tool-btn" title="Rotate (E)"><i class="fa-solid fa-rotate"></i></button>
+                <button id="btn-scale" class="tool-btn" title="Scale (R)"><i class="fa-solid fa-maximize"></i></button>
+            </div>
+
+            <!-- Snapping controls -->
+            <div class="tool-group snapping-group">
+                <button id="toggle-grid-snap" class="snap-btn" title="Grid Snapping (1m)"><i class="fa-solid fa-grid-3x3"></i></button>
+                <button id="toggle-angle-snap" class="snap-btn" title="Angle Snapping (15°)"><i class="fa-solid fa-compass"></i></button>
+                <button id="toggle-scale-snap" class="snap-btn" title="Scale Snapping (0.25)"><i class="fa-solid fa-compress"></i></button>
+                <button id="toggle-gizmo-center" class="snap-btn" title="Gizmo Centered to Camera"><i class="fa-solid fa-crosshairs"></i></button>
+            </div>
+
+            <div class="tool-group">
+                <button id="btn-play" class="tool-btn green" title="Simulate Scene"><i class="fa-solid fa-play"></i> Play</button>
+                <button id="btn-stop" class="tool-btn red disabled" title="Stop Simulation"><i class="fa-solid fa-stop"></i> Stop</button>
+            </div>
+
+            <div class="viewport-settings-group">
+                <select id="select-camera-view" class="ue-select">
+                    <option value="persp">Perspective</option>
+                    <option value="top">Top View</option>
+                    <option value="front">Front View</option>
+                </select>
+            </div>
+
+            <div class="render-mode-group">
+                <span class="mode-label">View Mode:</span>
+                <select id="select-render-mode" class="ue-select">
+                    <option value="pbr">Realtime PBR + PostProcess</option>
+                    <option value="pathtrace">Progressive Path Tracing</option>
+                </select>
+                <span id="pt-samples-config" class="hidden">
+                    <span class="mode-label">Max Samples:</span>
+                    <input type="number" id="pt-max-samples" class="ue-select" value="200" min="10" max="2000" style="width: 60px; text-align: center; font-family: monospace;">
+                </span>
+                <span id="pt-samples" class="sample-counter hidden">Samples: 0 / 200</span>
+            </div>
+        </header>
+
+        <div id="main-layout">
+            <!-- Left Sidebar: Outliner & Create Panel -->
+            <aside id="left-sidebar" class="sidebar">
+                <div class="panel-tab active">Outliner & Place Actors</div>
+                
+                <div class="panel-section">
+                    <h3>Place Actors</h3>
+                    <div class="actor-grid">
+                        <button class="add-actor-btn" data-type="cube"><i class="fa-solid fa-cube"></i> Cube</button>
+                        <button class="add-actor-btn" data-type="sphere"><i class="fa-solid fa-circle"></i> Sphere</button>
+                        <button class="add-actor-btn" data-type="cylinder"><i class="fa-solid fa-database"></i> Cylinder</button>
+                        <button class="add-actor-btn" data-type="plane"><i class="fa-solid fa-square"></i> Plane</button>
+                        <button class="add-actor-btn" data-type="dir-light"><i class="fa-solid fa-sun"></i> Directional Light</button>
+                        <button class="add-actor-btn" data-type="point-light"><i class="fa-solid fa-lightbulb"></i> Point Light</button>
+                        <button class="add-actor-btn" data-type="spot-light"><i class="fa-solid fa-circle-radiation"></i> Spot Light</button>
+                    </div>
+                </div>
+
+                <div class="panel-section list-section">
+                    <h3>World Outliner</h3>
+                    <div class="search-box">
+                        <i class="fa-solid fa-magnifying-glass"></i>
+                        <input type="text" id="outliner-search" placeholder="Search actors...">
+                    </div>
+                    <div id="outliner-list" class="tree-view">
+                        <!-- Dynamically filled -->
+                    </div>
+                </div>
+            </aside>
+
+            <!-- Center Viewport -->
+            <main id="viewport-container">
+                <div id="canvas-holder"></div>
+                
+                <!-- Viewport Widgets & Overlays -->
+                <div id="viewport-overlay">
+                    <div class="stats-panel">
+                        <div>FPS: <span id="fps-counter">60</span></div>
+                        <div>Resolution: <span id="res-counter">1920x1080</span></div>
+                    </div>
+                    <div id="path-tracing-overlay" class="pt-indicator hidden">
+                        <i class="fa-solid fa-circle-notch fa-spin"></i> Path Tracing + Denoiser...
+                    </div>
+                </div>
+
+                <!-- Orientation Compass Gizmo in corner -->
+                <div id="viewport-compass">
+                    <canvas id="compass-canvas" width="64" height="64"></canvas>
+                </div>
+            </main>
+
+            <!-- Right Sidebar: Inspector / Details -->
+            <aside id="right-sidebar" class="sidebar">
+                <div class="panel-tab active">Details</div>
+                
+                <div id="details-empty" class="details-placeholder">
+                    <i class="fa-solid fa-circle-info"></i>
+                    <p>Select an actor to view details</p>
+                </div>
+
+                <div id="details-content" class="details-panel-form hidden">
+                    <div class="section-title">
+                        <span id="actor-title">Actor Details</span>
+                        <button id="btn-delete-actor" class="delete-btn" title="Delete Actor"><i class="fa-solid fa-trash-can"></i></button>
+                    </div>
+
+                    <!-- Transform -->
+                    <div class="inspector-section">
+                        <h4><i class="fa-solid fa-arrows-to-dot"></i> Transform</h4>
+                        <div class="prop-group">
+                            <label>Location</label>
+                            <div class="vec3-inputs">
+                                <div class="axis x"><span class="lbl">X</span><input type="number" id="pos-x" step="0.1"></div>
+                                <div class="axis y"><span class="lbl">Y</span><input type="number" id="pos-y" step="0.1"></div>
+                                <div class="axis z"><span class="lbl">Z</span><input type="number" id="pos-z" step="0.1"></div>
+                            </div>
+                        </div>
+                        <div class="prop-group">
+                            <label>Rotation</label>
+                            <div class="vec3-inputs">
+                                <div class="axis x"><span class="lbl">X</span><input type="number" id="rot-x" step="1"></div>
+                                <div class="axis y"><span class="lbl">Y</span><input type="number" id="rot-y" step="1"></div>
+                                <div class="axis z"><span class="lbl">Z</span><input type="number" id="rot-z" step="1"></div>
+                            </div>
+                        </div>
+                        <div class="prop-group">
+                            <label>Scale</label>
+                            <div class="vec3-inputs">
+                                <div class="axis x"><span class="lbl">X</span><input type="number" id="scale-x" step="0.1"></div>
+                                <div class="axis y"><span class="lbl">Y</span><input type="number" id="scale-y" step="0.1"></div>
+                                <div class="axis z"><span class="lbl">Z</span><input type="number" id="scale-z" step="0.1"></div>
+                            </div>
+                        </div>
+                    </div>
+
+                    <!-- Material properties (for Mesh Actors) -->
+                    <div class="inspector-section" id="section-material">
+                        <h4><i class="fa-solid fa-paint-roller"></i> Material (PBR)</h4>
+                        <div class="prop-group row hidden" id="group-glb-material-select">
+                            <label>Select Material</label>
+                            <select id="select-glb-material" class="ue-select" style="width: 130px; font-family: monospace;"></select>
+                        </div>
+                        <div class="prop-group row">
+                            <label>Albedo Color</label>
+                            <input type="color" id="mat-color" value="#ffffff">
+                        </div>
+                        <div class="prop-group">
+                            <label>Roughness</label>
+                            <input type="range" id="mat-roughness" min="0" max="1" step="0.01" value="0.5">
+                            <span class="range-val" id="val-roughness">0.5</span>
+                        </div>
+                        <div class="prop-group">
+                            <label>Metalness</label>
+                            <input type="range" id="mat-metalness" min="0" max="1" step="0.01" value="0.0">
+                            <span class="range-val" id="val-metalness">0.0</span>
+                        </div>
+                        <div class="prop-group row">
+                            <label>Emissive Color</label>
+                            <input type="color" id="mat-emissive" value="#000000">
+                        </div>
+                        <div class="prop-group">
+                            <label>Emissive Intensity</label>
+                            <input type="range" id="mat-emissive-intensity" min="0" max="20" step="0.1" value="0">
+                            <span class="range-val" id="val-emissive-intensity">0.0</span>
+                        </div>
+                        <div class="prop-group">
+                            <label>Clearcoat</label>
+                            <input type="range" id="mat-clearcoat" min="0" max="1" step="0.01" value="0.0">
+                            <span class="range-val" id="val-clearcoat">0.0</span>
+                        </div>
+                        <!-- Refraction & Transmission PBR options -->
+                        <div class="prop-group">
+                            <label>Glass Transmission</label>
+                            <input type="range" id="mat-transmission" min="0" max="1" step="0.01" value="0.0">
+                            <span class="range-val" id="val-transmission">0.0</span>
+                        </div>
+                        <div class="prop-group">
+                            <label>Index of Refraction (IOR)</label>
+                            <input type="range" id="mat-ior" min="1.0" max="2.5" step="0.01" value="1.5">
+                            <span class="range-val" id="val-ior">1.50</span>
+                        </div>
+                        <div class="prop-group">
+                            <label>Iridescence</label>
+                            <input type="range" id="mat-iridescence" min="0" max="1" step="0.01" value="0.0">
+                            <span class="range-val" id="val-iridescence">0.0</span>
+                        </div>
+                    </div>
+
+                    <!-- Light properties (for Light Actors) -->
+                    <div class="inspector-section" id="section-light">
+                        <h4><i class="fa-solid fa-lightbulb"></i> Light Source</h4>
+                        <div class="prop-group row">
+                            <label>Color</label>
+                            <input type="color" id="light-color" value="#ffffff">
+                        </div>
+                        <div class="prop-group">
+                            <label>Intensity</label>
+                            <input type="range" id="light-intensity" min="0" max="100" step="0.1" value="1.0">
+                            <span class="range-val" id="val-light-intensity">1.0</span>
+                        </div>
+                        <div class="prop-group" id="group-light-distance">
+                            <label>Distance / Range</label>
+                            <input type="number" id="light-distance" step="1" value="50">
+                        </div>
+                        <div class="prop-group row" id="group-light-shadows">
+                            <label>Cast Shadows</label>
+                            <input type="checkbox" id="light-shadows" checked>
+                        </div>
+                        <!-- Shadow softness control -->
+                        <div class="prop-group" id="group-light-softness">
+                            <label>Shadow Softness (Blur)</label>
+                            <input type="range" id="light-shadow-radius" min="0" max="50" step="0.5" value="4">
+                            <span class="range-val" id="val-light-shadow-radius">4.0</span>
+                        </div>
+                    </div>
+                </div>
+            </aside>
+        </div>
+
+        <!-- Bottom Panel: Content Browser / Environment / Sequencer -->
+        <footer id="bottom-panel">
+            <div class="tabs">
+                <button class="tab-btn active" data-tab="content-browser"><i class="fa-solid fa-folder-open"></i> Content Browser</button>
+                <button class="tab-btn" data-tab="environment-settings"><i class="fa-solid fa-cloud-sun"></i> Environment & Post-Process</button>
+                <button class="tab-btn" data-tab="sequencer-tab"><i class="fa-solid fa-film"></i> Sequencer</button>
+            </div>
+            
+            <div class="tab-content active" id="content-browser">
+                <div class="presets-container" id="assets-grid">
+                    <!-- GLB Importer File Input -->
+                    <button class="preset-card import-btn" id="btn-import-glb" style="height: 70px; min-width: 100px;">
+                        <i class="fa-solid fa-cloud-arrow-up" style="font-size: 20px;"></i>
+                        <span>Import GLB Asset</span>
+                    </button>
+                    <input type="file" id="glb-file-input" accept=".glb,.gltf" multiple style="display: none;">
+
+                    <div class="preset-divider"></div>
+                    <!-- Dynamically populated asset cards will appear here -->
+                </div>
+            </div>
+
+            <div class="tab-content" id="environment-settings">
+                <div class="env-form">
+                    <div class="env-group" style="margin-bottom: 15px;">
+                        <label>Custom HDR Environment</label>
+                        <button class="ue-btn" id="btn-upload-hdr" style="width: 100%; display: flex; align-items: center; justify-content: center; gap: 8px; padding: 6px; background: #262a32; border: 1px dashed #4b5563; color: #cbd5e1; cursor: pointer; border-radius: 3px;">
+                            <i class="fa-solid fa-cloud-upload"></i>
+                            <span>Load Equirectangular HDR</span>
+                        </button>
+                        <input type="file" id="hdr-file-input" accept=".hdr" style="display: none;">
+                    </div>
+                    
+                    <div class="env-group">
+                        <label>HDR Intensity</label>
+                        <input type="range" id="env-hdr-intensity" min="0" max="5" step="0.05" value="1.0">
+                        <span class="range-val" id="val-hdr-intensity">1.0</span>
+                    </div>
+                    <div class="env-group">
+                        <label>HDR Rotation</label>
+                        <input type="range" id="env-hdr-rotation" min="0" max="360" step="1" value="0">
+                        <span class="range-val" id="val-hdr-rotation">0°</span>
+                    </div>
+                    
+                    <div class="env-divider"></div>
+
+                    <div class="env-group">
+                        <label>Sun Pitch (Elevation)</label>
+                        <input type="range" id="env-sun-pitch" min="-90" max="90" step="1" value="30">
+                        <span class="range-val" id="val-sun-pitch">30°</span>
+                    </div>
+                    <div class="env-group">
+                        <label>Fog Density</label>
+                        <input type="range" id="env-fog-density" min="0" max="0.1" step="0.001" value="0.015">
+                        <span class="range-val" id="val-fog-density">0.015</span>
+                    </div>
+                    <div class="env-group row">
+                        <label>Fog Color</label>
+                        <input type="color" id="env-fog-color" value="#101216">
+                    </div>
+                    <div class="env-group">
+                        <label>Ambient Light</label>
+                        <input type="range" id="env-ambient-intensity" min="0" max="2" step="0.05" value="0.2">
+                        <span class="range-val" id="val-ambient-intensity">0.2</span>
+                    </div>
+                    
+                    <div class="env-divider"></div>
+
+                    <div class="env-group">
+                        <label>Bloom Intensity</label>
+                        <input type="range" id="env-bloom-intensity" min="0" max="4" step="0.1" value="1.5">
+                        <span class="range-val" id="val-bloom-intensity">1.5</span>
+                    </div>
+                    <div class="env-group row" style="gap: 10px;">
+                        <label>SSAO Enabled</label>
+                        <input type="checkbox" id="env-ssao-enabled" checked>
+                    </div>
+                    <div class="env-group">
+                        <label>SSAO Radius</label>
+                        <input type="range" id="env-ssao-radius" min="0.001" max="0.02" step="0.001" value="0.006">
+                        <span class="range-val" id="val-ssao-radius">0.006</span>
+                    </div>
+                    <div class="env-group">
+                        <label>SSAO Intensity</label>
+                        <input type="range" id="env-ssao-intensity" min="0" max="3" step="0.1" value="1.0">
+                        <span class="range-val" id="val-ssao-intensity">1.0</span>
+                    </div>
+                    <div class="env-group">
+                        <label>Vignette Strength</label>
+                        <input type="range" id="env-vignette" min="0" max="2" step="0.1" value="1.0">
+                        <span class="range-val" id="val-vignette">1.0</span>
+                    </div>
+                </div>
+            </div>
+
+            <!-- Sequencer Panel Tab -->
+            <div class="tab-content" id="sequencer-tab">
+                <div class="sequencer-container">
+                    <div class="seq-controls">
+                        <button id="seq-record" class="seq-btn red-dot" title="Record Keyframe"><i class="fa-solid fa-circle"></i> Keyframe</button>
+                        <button id="seq-play" class="seq-btn" title="Play animation"><i class="fa-solid fa-play"></i> Play</button>
+                        <button id="seq-stop" class="seq-btn" title="Stop animation"><i class="fa-solid fa-stop"></i> Stop</button>
+                        <button id="seq-loop" class="seq-btn active" title="Toggle Loop"><i class="fa-solid fa-arrows-spin"></i> Loop</button>
+                        <button id="seq-clear" class="seq-btn" title="Clear Tracks"><i class="fa-solid fa-trash-arrow-up"></i> Clear</button>
+                        
+                        <div class="seq-info">
+                            <span>Keyframes recorded: <strong id="seq-keys-count">0</strong></span>
+                            <span>Playback: <strong id="seq-playback-status">Stopped</strong></span>
+                        </div>
+                    </div>
+                    <div class="seq-timeline-track">
+                        <div class="timeline-bar">
+                            <!-- Graphical representation of keyframes -->
+                            <div id="timeline-playhead"></div>
+                            <div id="timeline-keyframes-container"></div>
+                        </div>
+                    </div>
+                </div>
+            </div>
+        </footer>
+    </div>
+
+    <!-- Application modules -->
+    <script type="module" src="engine.js"></script>
+    <script type="module" src="app.js"></script>
+</body>
+</html>

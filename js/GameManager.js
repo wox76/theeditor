@@ -6,6 +6,105 @@ THREE.BufferGeometry.prototype.computeBoundsTree = computeBoundsTree;
 THREE.BufferGeometry.prototype.disposeBoundsTree = disposeBoundsTree;
 THREE.Mesh.prototype.raycast = acceleratedRaycast;
 
+function createObjectiveTexture(text) {
+    const canvas = document.createElement('canvas');
+    canvas.width = 256;
+    canvas.height = 256;
+    const ctx = canvas.getContext('2d');
+    
+    ctx.clearRect(0, 0, 256, 256);
+    
+    // Outer shadow
+    ctx.shadowColor = 'rgba(0, 0, 0, 0.4)';
+    ctx.shadowBlur = 8;
+    ctx.shadowOffsetX = 0;
+    ctx.shadowOffsetY = 6;
+    
+    // Circle
+    ctx.fillStyle = 'rgba(255, 204, 0, 0.95)'; // Gold/Yellow
+    ctx.beginPath();
+    ctx.arc(128, 128, 110, 0, 2 * Math.PI);
+    ctx.fill();
+    
+    // Inner white border
+    ctx.shadowColor = 'transparent';
+    ctx.strokeStyle = '#ffffff';
+    ctx.lineWidth = 6;
+    ctx.beginPath();
+    ctx.arc(128, 128, 100, 0, 2 * Math.PI);
+    ctx.stroke();
+    
+    // Text inside
+    ctx.fillStyle = '#111111';
+    ctx.font = 'bold 24px Arial';
+    ctx.textAlign = 'center';
+    ctx.textBaseline = 'middle';
+    
+    const words = text.toUpperCase().split(' ');
+    let lines = [];
+    let currentLine = words[0] || '';
+    for (let i = 1; i < words.length; i++) {
+        if ((currentLine + ' ' + words[i]).length < 12) {
+            currentLine += ' ' + words[i];
+        } else {
+            lines.push(currentLine);
+            currentLine = words[i];
+        }
+    }
+    lines.push(currentLine);
+    
+    if (lines.length === 1) {
+        ctx.fillText(lines[0], 128, 128);
+    } else if (lines.length === 2) {
+        ctx.fillText(lines[0], 128, 108);
+        ctx.fillText(lines[1], 128, 148);
+    } else {
+        ctx.fillText(lines[0], 128, 88);
+        ctx.fillText(lines[1], 128, 128);
+        ctx.fillText(lines[2], 128, 168);
+    }
+    
+    return new THREE.CanvasTexture(canvas);
+}
+
+function createHintTexture(key) {
+    const canvas = document.createElement('canvas');
+    canvas.width = 128;
+    canvas.height = 128;
+    const ctx = canvas.getContext('2d');
+    
+    // Clear
+    ctx.clearRect(0, 0, 128, 128);
+    
+    // Draw outer white circle with shadow
+    ctx.shadowColor = 'rgba(0, 0, 0, 0.4)';
+    ctx.shadowBlur = 6;
+    ctx.shadowOffsetX = 0;
+    ctx.shadowOffsetY = 4;
+    
+    ctx.beginPath();
+    ctx.arc(64, 64, 48, 0, 2 * Math.PI);
+    ctx.fillStyle = '#ffffff';
+    ctx.fill();
+    
+    // Inner border
+    ctx.shadowColor = 'transparent';
+    ctx.beginPath();
+    ctx.arc(64, 64, 44, 0, 2 * Math.PI);
+    ctx.strokeStyle = '#cccccc';
+    ctx.lineWidth = 6;
+    ctx.stroke();
+    
+    // Text
+    ctx.fillStyle = '#111111';
+    ctx.font = 'bold 50px Arial';
+    ctx.textAlign = 'center';
+    ctx.textBaseline = 'middle';
+    ctx.fillText(key.toUpperCase(), 64, 64);
+    
+    return new THREE.CanvasTexture(canvas);
+}
+
 export class GameManager {
     constructor(app) {
         this.app = app;
@@ -102,7 +201,8 @@ export class GameManager {
         let levelIndex = index;
         if (levelIndex < 0) levelIndex = this.app.editor.currentLevelIndex;
         // Final fallback to starting level if still nothing
-        if (levelIndex < 0 && this.app.editor.levels.length > 0) {
+        const levels = Array.isArray(this.app.editor.levels) ? this.app.editor.levels : [];
+        if (levelIndex < 0 && levels.length > 0) {
             levelIndex = this.app.editor.startingLevelIndex;
         }
 
@@ -118,7 +218,10 @@ export class GameManager {
 
         this.editorCameraState = {
             position: this.app.sceneManager.camera.position.clone(),
-            quaternion: this.app.sceneManager.camera.quaternion.clone()
+            quaternion: this.app.sceneManager.camera.quaternion.clone(),
+            fov: this.app.sceneManager.camera.fov,
+            near: this.app.sceneManager.camera.near,
+            far: this.app.sceneManager.camera.far
         };
 
         this.app.editor.objects.forEach(o => {
@@ -148,23 +251,11 @@ export class GameManager {
                 }
             }
 
-            // Hide Hitboxes for GLB wrappers
-            if (o.userData.glbSource && o.material) {
-                if (o.userData.type === 'Enemy' || o.userData.type === 'Boss') {
-                    // Check for tiny scale (invisible killer)
-                    if (o.scale.lengthSq() < 0.01) {
-                        console.warn(`Enemy ${o.name} has near-zero scale! Resetting to 1.`);
-                        o.scale.set(1, 1, 1);
-                    }
-
-                    // For Enemies, show faint wireframe so user sees the "Ghost" if GLB is broken
-                    o.material.visible = true;
-                    o.material.wireframe = true;
-                    o.material.transparent = true;
-                    o.material.opacity = 0.5; // Increased visibility
-                } else {
-                    o.material.visible = false;
-                }
+            // Hide wireframe visualizers and hitboxes for GLB wrappers & Light objects
+            if (o.userData.type === 'PointLight' || o.userData.type === 'SpotLight' || o.userData.type === 'DirectionalLight' || o.userData.type === 'Camera' || o.userData.isCamera) {
+                if (o.material) o.material.visible = false;
+            } else if (o.material && !o.userData.isPlayer) {
+                o.material.visible = false;
             }
 
             // Hide Catchers (Base & Target) - ghost behavior
@@ -175,6 +266,15 @@ export class GameManager {
             // Hide ArrowHelpers
             const arrow = o.getObjectByName('ArrowHelper');
             if (arrow) arrow.visible = false;
+
+            // Traverse and ensure all nested wireframe materials on non-player objects are hidden during Play mode
+            this.safeTraverse(o, child => {
+                if (child.isMesh && child.material && !child.userData.isPlayer && o.userData.type !== 'SplatEnv') {
+                    if (child.material.wireframe) {
+                        child.material.visible = false;
+                    }
+                }
+            });
 
             this.safeTraverse(o, child => {
                 if (child.isMesh && !child.userData.isPlayer && !child.userData.isHelper && o.userData.type !== 'SplatEnv') {
@@ -199,11 +299,41 @@ export class GameManager {
         this.gameCameraObj = (selected && selected.userData.isCamera) ? selected : this.app.editor.objects.find(o => o.userData.isCamera);
 
         if (this.gameCameraObj) {
+            if (this.player && !this.gameCameraObj.userData.isAligned) {
+                // Se la telecamera non è stata allineata manualmente con Align View,
+                // posizionala sul Player a 175cm (1.75m) di altezza e leggermente più avanti (+0.4m)
+                this.gameCameraObj.position.copy(this.player.position);
+                this.gameCameraObj.position.y += 1.75;
+                const forwardOffset = new THREE.Vector3(0, 0, 0.4).applyQuaternion(this.player.quaternion);
+                this.gameCameraObj.position.add(forwardOffset);
+                this.gameCameraObj.quaternion.copy(this.player.quaternion);
+            }
+
             const cam = this.app.sceneManager.camera;
             this.gameCameraObj.updateMatrixWorld(true);
             cam.position.copy(this.gameCameraObj.position);
             cam.quaternion.copy(this.gameCameraObj.quaternion);
-            cam.fov = this.gameCameraObj.userData.fov || 60;
+
+            const cameraChild = this.gameCameraObj.children ? this.gameCameraObj.children.find(c => c.isCamera) : null;
+            let targetFov = 60;
+            if (this.gameCameraObj.userData && this.gameCameraObj.userData.fov !== undefined && !isNaN(parseFloat(this.gameCameraObj.userData.fov))) {
+                targetFov = parseFloat(this.gameCameraObj.userData.fov);
+            } else if (cameraChild && cameraChild.fov) {
+                targetFov = cameraChild.fov;
+            }
+
+            let targetNear = (this.gameCameraObj.userData && this.gameCameraObj.userData.near !== undefined) ? parseFloat(this.gameCameraObj.userData.near) : 0.1;
+            let targetFar = (this.gameCameraObj.userData && this.gameCameraObj.userData.far !== undefined) ? parseFloat(this.gameCameraObj.userData.far) : 1000;
+
+            cam.fov = targetFov;
+            cam.near = targetNear;
+            cam.far = targetFar;
+            if (cameraChild) {
+                cameraChild.fov = targetFov;
+                cameraChild.near = targetNear;
+                cameraChild.far = targetFar;
+                cameraChild.updateProjectionMatrix();
+            }
             cam.updateProjectionMatrix();
             this.gameCameraObj.visible = false;
             if (this.player) {
@@ -541,7 +671,7 @@ export class GameManager {
                 if (obj.userData.type === 'Collision') obj.userData.triggered = false;
                 if (obj.userData.type === 'Goal') obj.userData.triggered = false;
 
-                if (obj.userData.glbSource && obj.material) obj.material.visible = true;
+                if (obj.material) obj.material.visible = true;
                 if (obj.parent !== this.app.sceneManager.scene) this.app.sceneManager.scene.add(obj);
 
                 const arrow = obj.getObjectByName('ArrowHelper');
@@ -555,6 +685,7 @@ export class GameManager {
         window.removeEventListener('mouseup', this.onMouseUp);
         window.removeEventListener('blur', this.onBlur);
         document.exitPointerLock?.();
+        document.querySelectorAll('.analyze-hint-badge').forEach(b => b.remove());
 
         if (this.mixer) { this.mixer.stopAllAction(); this.mixer = null; }
 
@@ -570,11 +701,28 @@ export class GameManager {
         this.app.editor.enableOrbit(true);
         this.app.sceneManager.scene.children.forEach(c => { if (c.type === 'GridHelper') c.visible = true; });
 
+        // Restore Scene Illumination and Ambient Light when exiting Play Mode
+        if (this.app.sceneManager) {
+            const sm = this.app.sceneManager;
+            const targetIntensity = (this.app.editor.gameAmbientIntensity !== undefined && this.app.editor.gameAmbientIntensity !== null) 
+                ? this.app.editor.gameAmbientIntensity 
+                : 0.6;
+            const targetColor = this.app.editor.gameAmbientColor || '#ffffff';
+            sm.setAmbientIntensity(targetIntensity);
+            sm.setAmbientColor(targetColor);
+            if (sm.dirLight) sm.dirLight.intensity = 1.0;
+        }
+
         if (this.app.editor.linkGroup) this.app.editor.linkGroup.visible = true;
 
         if (this.editorCameraState) {
-            this.app.sceneManager.camera.position.copy(this.editorCameraState.position);
-            this.app.sceneManager.camera.quaternion.copy(this.editorCameraState.quaternion);
+            const cam = this.app.sceneManager.camera;
+            cam.position.copy(this.editorCameraState.position);
+            cam.quaternion.copy(this.editorCameraState.quaternion);
+            if (this.editorCameraState.fov !== undefined) cam.fov = this.editorCameraState.fov;
+            if (this.editorCameraState.near !== undefined) cam.near = this.editorCameraState.near;
+            if (this.editorCameraState.far !== undefined) cam.far = this.editorCameraState.far;
+            cam.updateProjectionMatrix();
             this.app.editor.orbit.update();
         }
 
@@ -1239,89 +1387,206 @@ export class GameManager {
                 }
             }
 
-            // Runtime interattivo Analyze e Dialog
-            if (collided) {
-                if (o.userData.type === 'Analyze') {
-                    const anz = o.userData;
-                    const reqKey = anz.activationKey || 'e';
-                    const triggerActive = anz.activationTouch || this.keys.has(reqKey.toLowerCase());
-                    
-                    if (triggerActive && !this._isAnalyzing) {
-                        this._isAnalyzing = true;
-                        
-                        // Creazione overlay HTML per l'analisi
-                        let overlay = document.getElementById('analyze-overlay');
-                        if (!overlay) {
-                            overlay = document.createElement('div');
-                            overlay.id = 'analyze-overlay';
-                            overlay.style.cssText = `
-                                position: fixed;
-                                top: 50%;
-                                left: 50%;
-                                transform: translate(-50%, -50%) scale(0.9);
-                                background: ${anz.dialogBgColor || 'rgba(25, 25, 30, 0.95)'};
-                                border: 2px solid ${anz.dialogAccentColor || '#33cccc'};
-                                border-radius: 12px;
-                                padding: 20px;
-                                color: ${anz.dialogTextColor || '#ffffff'};
-                                font-family: ${anz.dialogFont || 'inherit'};
-                                max-width: 400px;
-                                width: 90%;
-                                z-index: 10000;
-                                opacity: 0;
-                                transition: all 0.3s cubic-bezier(0.4, 0, 0.2, 1);
-                                box-shadow: 0 10px 30px rgba(0,0,0,0.5);
-                            `;
-                            document.body.appendChild(overlay);
+            // Render HINT tasto per Analyze in 3D Screen Space
+            if (o.userData.type === 'Analyze') {
+                const anz = o.userData;
+                const showHint = anz.showHint !== false;
+                const isTouch = !!anz.activationTouch;
+                const reqKey = (anz.activationKey || 'E').toUpperCase();
+                const hintDist = anz.hintDistance !== undefined ? parseFloat(anz.hintDistance) : 3.5;
+
+                const pWorld = new THREE.Vector3();
+                this.player.getWorldPosition(pWorld);
+                const oWorld = new THREE.Vector3();
+                o.getWorldPosition(oWorld);
+                const dist = pWorld.distanceTo(oWorld);
+
+                const badgeId = 'anz-key-hint-' + (o.id || o.uuid);
+                let hintBadge = document.getElementById(badgeId);
+
+                if (showHint && !isTouch && !this._isAnalyzing && dist <= hintDist) {
+                    const box = new THREE.Box3().setFromObject(o);
+                    const topY = (!isNaN(box.max.y) && box.max.y > oWorld.y) ? box.max.y : oWorld.y + 0.8;
+                    const hintWorldPos = new THREE.Vector3((box.min.x + box.max.x) / 2, topY + 0.35, (box.min.z + box.max.z) / 2);
+                    hintWorldPos.project(this.app.sceneManager.camera);
+
+                    if (hintWorldPos.z < 1) {
+                        const x = (hintWorldPos.x * 0.5 + 0.5) * window.innerWidth;
+                        const y = (-hintWorldPos.y * 0.5 + 0.5) * window.innerHeight;
+
+                        const hSize = anz.hintSize ? parseInt(anz.hintSize) : 44;
+                        const innerSize = Math.max(16, Math.round(hSize * 0.68));
+                        const fontSize = Math.max(10, Math.round(hSize * 0.35));
+                        const circleColor = anz.hintBgColor || anz.dialogAccentColor || '#33cccc';
+                        const textColor = anz.hintTextColor || '#000000';
+
+                        let isNew = false;
+                        if (!hintBadge) {
+                            hintBadge = document.createElement('div');
+                            hintBadge.id = badgeId;
+                            hintBadge.className = 'analyze-hint-badge';
+                            hintBadge.style.opacity = '0';
+                            document.body.appendChild(hintBadge);
+                            isNew = true;
                         }
-                        
-                        // Riempie il contenuto
-                        overlay.innerHTML = `
-                            <div style="font-weight:bold; font-size:16px; margin-bottom:8px; border-bottom:1px solid rgba(255,255,255,0.1); padding-bottom:6px; color:${anz.dialogAccentColor || '#33cccc'}">🔍 ${anz.objectName || 'Oggetto Analizzato'}</div>
-                            <div style="font-size:13px; line-height:1.5; margin-bottom:15px; white-space:pre-wrap;">${anz.objectDescription || 'Nessuna descrizione disponibile.'}</div>
-                            <div style="text-align:right; font-size:10px; color:#aaa; font-style:italic;">Premi 'Esc' o allontanati per chiudere</div>
+
+                        hintBadge.style.cssText = `
+                            position: fixed;
+                            left: ${x}px;
+                            top: ${y}px;
+                            transform: translate(-50%, -100%) scale(${isNew ? 0.7 : 1});
+                            z-index: 9999;
+                            pointer-events: none;
+                            width: ${hSize}px;
+                            height: ${hSize}px;
+                            border-radius: 50%;
+                            background: rgba(18, 20, 28, 0.92);
+                            border: 2px solid ${circleColor};
+                            box-shadow: 0 0 18px ${circleColor}aa, inset 0 0 10px ${circleColor}44;
+                            display: flex;
+                            align-items: center;
+                            justify-content: center;
+                            transition: opacity 0.35s ease-out, transform 0.35s ease-out;
                         `;
-                        
-                        // Animazione entrata
-                        setTimeout(() => {
-                            overlay.style.opacity = '1';
-                            overlay.style.transform = 'translate(-50%, -50%) scale(1)';
-                        }, 50);
-                        
-                        // Chiusura automatica allontanandosi o premendo esc
-                        const closeAnz = () => {
-                            overlay.style.opacity = '0';
-                            overlay.style.transform = 'translate(-50%, -50%) scale(0.9)';
-                            setTimeout(() => {
-                                if (overlay.parentNode) overlay.parentNode.removeChild(overlay);
-                                this._isAnalyzing = false;
-                            }, 300);
-                            window.removeEventListener('keydown', handleEsc);
-                        };
-                        
-                        const handleEsc = (e) => { if (e.key === 'Escape') closeAnz(); };
-                        window.addEventListener('keydown', handleEsc);
-                        
-                        // Auto chiusura se allontanato
-                        const checkDistInterval = setInterval(() => {
-                            if (!this.isPlaying) {
-                                clearInterval(checkDistInterval);
-                                closeAnz();
-                                return;
+
+                        hintBadge.innerHTML = `
+                            <div style="
+                                width: ${innerSize}px;
+                                height: ${innerSize}px;
+                                border-radius: 50%;
+                                background: ${circleColor};
+                                color: ${textColor};
+                                display: flex;
+                                align-items: center;
+                                justify-content: center;
+                                font-family: system-ui, -apple-system, sans-serif;
+                                font-weight: 900;
+                                font-size: ${fontSize}px;
+                                text-transform: uppercase;
+                                box-shadow: 0 2px 6px rgba(0,0,0,0.5);
+                            ">${reqKey}</div>
+                        `;
+
+                        requestAnimationFrame(() => {
+                            if (hintBadge) {
+                                hintBadge.style.opacity = '1';
+                                hintBadge.style.transform = 'translate(-50%, -100%) scale(1)';
                             }
-                            const pWorld = new THREE.Vector3();
-                            this.player.getWorldPosition(pWorld);
-                            const oWorld = new THREE.Vector3();
-                            o.getWorldPosition(oWorld);
-                            const currentDist = pWorld.distanceTo(oWorld);
-                            if (currentDist > (anz.radius || 3.0)) {
-                                clearInterval(checkDistInterval);
-                                closeAnz();
-                            }
-                        }, 200);
+                        });
+                    } else if (hintBadge) {
+                        hintBadge.style.opacity = '0';
+                    }
+                } else {
+                    if (hintBadge) {
+                        hintBadge.style.opacity = '0';
+                        setTimeout(() => { if (hintBadge.parentNode) hintBadge.parentNode.removeChild(hintBadge); }, 200);
                     }
                 }
+            }
+
+            // Runtime interattivo Analyze
+            if (o.userData.type === 'Analyze') {
+                const anz = o.userData;
+                const reqKey = anz.activationKey || 'e';
+                const hintDist = anz.hintDistance !== undefined ? parseFloat(anz.hintDistance) : 3.5;
                 
+                const pWorld = new THREE.Vector3();
+                this.player.getWorldPosition(pWorld);
+                const oWorld = new THREE.Vector3();
+                o.getWorldPosition(oWorld);
+                const dist = pWorld.distanceTo(oWorld);
+
+                const inRange = dist <= hintDist || collided;
+                const keyPressed = this.keys.has(reqKey.toLowerCase());
+                const triggerActive = anz.activationTouch ? collided : (inRange && keyPressed);
+                
+                if (triggerActive && !this._isAnalyzing) {
+                    this._isAnalyzing = true;
+                    
+                    // Creazione overlay HTML per l'analisi
+                    let overlay = document.getElementById('analyze-overlay');
+                    if (!overlay) {
+                        overlay = document.createElement('div');
+                        overlay.id = 'analyze-overlay';
+                        overlay.style.cssText = `
+                            position: fixed;
+                            top: 50%;
+                            left: 50%;
+                            transform: translate(-50%, -50%) scale(0.9);
+                            background: ${anz.dialogBgColor || 'rgba(25, 25, 30, 0.95)'};
+                            border: 2px solid ${anz.dialogAccentColor || '#33cccc'};
+                            border-radius: 12px;
+                            padding: 20px;
+                            color: ${anz.dialogTextColor || '#ffffff'};
+                            font-family: ${anz.dialogFont || 'inherit'};
+                            max-width: 400px;
+                            width: 90%;
+                            z-index: 10000;
+                            opacity: 0;
+                            transition: all 0.3s cubic-bezier(0.4, 0, 0.2, 1);
+                            box-shadow: 0 10px 30px rgba(0,0,0,0.5);
+                        `;
+                        document.body.appendChild(overlay);
+                    }
+                    
+                    // Riempie il contenuto
+                    overlay.innerHTML = `
+                        <div style="font-weight:bold; font-size:16px; margin-bottom:8px; border-bottom:1px solid rgba(255,255,255,0.1); padding-bottom:6px; color:${anz.dialogAccentColor || '#33cccc'}">🔍 ${anz.objectName || 'Oggetto Analizzato'}</div>
+                        <div style="font-size:13px; line-height:1.5; margin-bottom:15px; white-space:pre-wrap;">${anz.objectDescription || 'Nessuna descrizione disponibile.'}</div>
+                        <div style="text-align:right; font-size:10px; color:#aaa; font-style:italic;">Premi '${reqKey.toUpperCase()}' o 'Esc' per chiudere</div>
+                    `;
+                    
+                    // Animazione entrata
+                    setTimeout(() => {
+                        overlay.style.opacity = '1';
+                        overlay.style.transform = 'translate(-50%, -50%) scale(1)';
+                    }, 50);
+                    
+                    // Chiusura automatica allontanandosi o premendo lo stesso tasto / esc
+                    const closeAnz = () => {
+                        overlay.style.opacity = '0';
+                        overlay.style.transform = 'translate(-50%, -50%) scale(0.9)';
+                        setTimeout(() => {
+                            if (overlay.parentNode) overlay.parentNode.removeChild(overlay);
+                            this._isAnalyzing = false;
+                        }, 300);
+                        window.removeEventListener('keydown', handleKey);
+                    };
+                    
+                    const handleKey = (e) => {
+                        const pressedKey = e.key.toLowerCase();
+                        const targetKey = (reqKey).toLowerCase();
+                        if (pressedKey === targetKey || e.key === 'Escape') {
+                            closeAnz();
+                        }
+                    };
+                    setTimeout(() => {
+                        window.addEventListener('keydown', handleKey);
+                    }, 150);
+                    
+                    // Auto chiusura se allontanato
+                    const checkDistInterval = setInterval(() => {
+                        if (!this.isPlaying) {
+                            clearInterval(checkDistInterval);
+                            closeAnz();
+                            return;
+                        }
+                        const pWorld = new THREE.Vector3();
+                        this.player.getWorldPosition(pWorld);
+                        const oWorld = new THREE.Vector3();
+                        o.getWorldPosition(oWorld);
+                        const currentDist = pWorld.distanceTo(oWorld);
+                        const maxAllowedDist = (anz.hintDistance !== undefined ? parseFloat(anz.hintDistance) : 3.5) + 1.0;
+                        if (currentDist > maxAllowedDist) {
+                            clearInterval(checkDistInterval);
+                            closeAnz();
+                        }
+                    }, 200);
+                }
+            }
+
+            // Runtime interattivo Dialog
+            if (collided) {
                 if (o.userData.type === 'Dialog') {
                     const dlg = o.userData;
                     if (!this._isDialogActive) {
@@ -1524,7 +1789,7 @@ export class GameManager {
                         // Detach from scene, attach to player
                         o.removeFromParent();
                         playerModel.add(o);
-                        console.log(`PowerUp Attached to: ${playerModel.name} | UUID: ${playerModel.uuid} | Object: ${o.name}`);
+                        console.log("PowerUp Attached to: " + playerModel.name + " | UUID: " + playerModel.uuid + " | Object: " + o.name);
                         o.updateMatrixWorld(true);
 
                         // If it is a Lantern, hide it initially
@@ -1601,9 +1866,9 @@ export class GameManager {
                         // Remove object from scene only if it wasn't attached to player
                         // IF we attached it to player, o.parent is playerModel.
                         // IF we didn't (e.g. instant effect?), we should have removed it.
-                        // But wait, the code above `playerModel.add(o)` ALWAYS runs for PowerUp (lines 1229-1231).
+                        // But wait, the code above 'playerModel.add(o)' ALWAYS runs for PowerUp (lines 1229-1231).
                         // So o.parent is ALWAYS playerModel here.
-                        // So `o.removeFromParent()` ALWAYS detaches it.
+                        // So 'o.removeFromParent()' ALWAYS detaches it.
                         // DELETING THIS BLOCK.
 
                         // (No operation needed here, the object is now part of the player)
@@ -1952,6 +2217,9 @@ export class GameManager {
             o.userData.type !== 'Bonus' && o.userData.type !== 'Goal' && o.userData.type !== 'catcher_base' && o.userData.type !== 'catcher_target' && o.userData.type !== 'Catcher'
         );
 
+        const isStopMode = (u.collisionMode === 'stop');
+        const maxStepUp = isStopMode ? 0.05 : 0.5;
+
         if (moveDir.length() > 0) {
             moveDir.normalize();
             // Cast ray in movement direction at waist height
@@ -1959,16 +2227,24 @@ export class GameManager {
             this.raycaster.set(waistPos, moveDir);
             const hits = this.raycaster.intersectObjects(obstacles, true);
 
-            // Wall Sliding
-            if (hits.length > 0 && hits[0].distance < 0.6 && hits[0].face) {
+            const hitDist = pr + 0.15;
+            if (hits.length > 0 && hits[0].distance < hitDist && hits[0].face) {
                 const normal = hits[0].face.normal.clone().applyQuaternion(hits[0].object.quaternion);
                 const dot = moveDir.dot(normal);
                 if (dot < 0) {
-                    moveDir.sub(normal.multiplyScalar(dot));
+                    if (isStopMode) {
+                        // "Fermati e blocca": Completely stop movement into obstacle
+                        moveDir.set(0, 0, 0);
+                    } else {
+                        // Wall Sliding ("Sali e supera")
+                        moveDir.sub(normal.multiplyScalar(dot));
+                    }
                 }
             }
 
-            this.player.position.add(moveDir.multiplyScalar(speed * dt));
+            if (moveDir.length() > 0) {
+                this.player.position.add(moveDir.multiplyScalar(speed * dt));
+            }
         }
 
         // Update direction memory for Platform mode
@@ -2017,7 +2293,7 @@ export class GameManager {
             if (hits.length > 0) {
                 // Filter hits to find the highest solid ground below the player's "step up" height
                 for (let hit of hits) {
-                    if (hit.point.y < this.player.position.y + 0.5) {
+                    if (hit.point.y < this.player.position.y + maxStepUp) {
                         if (hit.point.y > groundY) groundY = hit.point.y;
                         break; // Found closest valid ground for this ray
                     }
@@ -2114,10 +2390,27 @@ export class GameManager {
     updateCamera() {
         if (!this.player || !this.gameCameraObj) return;
         const type = this.gameCameraObj.userData.type || 'TPS';
-        // console.log("Cam Type:", type); // Debug
-        if (type === 'FIXED') return;
-
         const cam = this.app.sceneManager.camera;
+
+        const cameraChild = this.gameCameraObj.children ? this.gameCameraObj.children.find(c => c.isCamera) : null;
+        let targetFov = 60;
+        if (this.gameCameraObj.userData && this.gameCameraObj.userData.fov !== undefined && !isNaN(parseFloat(this.gameCameraObj.userData.fov))) {
+            targetFov = parseFloat(this.gameCameraObj.userData.fov);
+        } else if (cameraChild && cameraChild.fov) {
+            targetFov = cameraChild.fov;
+        }
+
+        let targetNear = (this.gameCameraObj.userData && this.gameCameraObj.userData.near !== undefined) ? parseFloat(this.gameCameraObj.userData.near) : 0.1;
+        let targetFar = (this.gameCameraObj.userData && this.gameCameraObj.userData.far !== undefined) ? parseFloat(this.gameCameraObj.userData.far) : 1000;
+
+        if (cam.fov !== targetFov || cam.near !== targetNear || cam.far !== targetFar) {
+            cam.fov = targetFov;
+            cam.near = targetNear;
+            cam.far = targetFar;
+            cam.updateProjectionMatrix();
+        }
+
+        if (type === 'FIXED') return;
 
         if (type === 'TPS') {
             const distance = this.cameraDistance || 5;
@@ -2150,9 +2443,19 @@ export class GameManager {
 
             cam.lookAt(targetPos);
         } else if (type === 'FPS') {
-            const headPos = this.player.position.clone().add(new THREE.Vector3(0, 1.8, 0));
-            cam.position.copy(headPos);
+            let ph = 2.0;
+            if (this.player.geometry?.parameters) {
+                const p = this.player.geometry.parameters;
+                ph = (p.length || p.height || 1.0) + (p.radius || 0.5) * 2;
+            }
+            const headPos = this.player.position.clone().add(new THREE.Vector3(0, 1.75 - ph / 2, 0));
             cam.rotation.set(this.mouseRotation.y, this.mouseRotation.x, 0, 'YXZ');
+            
+            // Push camera forward along look direction (+0.45m) to avoid clipping inside player mesh
+            const forwardDir = new THREE.Vector3();
+            cam.getWorldDirection(forwardDir);
+            headPos.add(forwardDir.multiplyScalar(0.45));
+            cam.position.copy(headPos);
         } else if (type === '8WAY') {
             const desiredPos = this.player.position.clone().add(this.cameraOffset);
             cam.position.copy(desiredPos);
@@ -2215,9 +2518,10 @@ export class GameManager {
      * Does NOT show the title/splash screen, does NOT enter edit mode.
      */
     async loadLevel(index) {
-        if (index < 0 || index >= this.app.editor.levels.length) {
+        const levels = Array.isArray(this.app.editor.levels) ? this.app.editor.levels : [];
+        if (index < 0 || index >= levels.length) {
             console.warn('[GameManager] loadLevel: index out of range', index);
-            if (index >= this.app.editor.levels.length && this.app.editor.levels.length > 0) {
+            if (index >= levels.length && levels.length > 0) {
                 this.showEndScreen();
             }
             return;
@@ -2601,9 +2905,10 @@ export class GameManager {
                 this._stopInternal();
 
                 // Re-launch from starting level (shows title splash)
-                const startIdx = (ed.startingLevelIndex >= 0 && ed.startingLevelIndex < ed.levels.length)
+                const levels = Array.isArray(ed.levels) ? ed.levels : [];
+                const startIdx = (ed.startingLevelIndex >= 0 && ed.startingLevelIndex < levels.length)
                     ? ed.startingLevelIndex : 0;
-                if (ed.levels.length > 0) {
+                if (levels.length > 0) {
                     ed.loadLevelByIndex(startIdx).then(() => {
                         this.start(startIdx);
                         const btnPlay = document.getElementById('btn-play');

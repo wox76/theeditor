@@ -10,6 +10,48 @@ export class UIManager {
         this.library = [];
         this.isDropping = false;
         this.thumbRenderer = null;
+        this.collapsedObjects = new Set();
+    }
+
+    showLoading(text = "Caricamento scena in corso...") {
+        const overlay = document.getElementById('global-loading-overlay');
+        const label = document.getElementById('global-loading-text');
+        if (label) label.innerText = text;
+        if (overlay) {
+            overlay.style.display = 'flex';
+            overlay.style.opacity = '1';
+        }
+    }
+
+    hideLoading() {
+        const overlay = document.getElementById('global-loading-overlay');
+        if (overlay) {
+            overlay.style.opacity = '0';
+            setTimeout(() => {
+                if (overlay.style.opacity === '0') {
+                    overlay.style.display = 'none';
+                }
+            }, 300);
+        }
+    }
+
+    async uploadAssetFile(file, assetType = 'assets') {
+        const projectName = this.app.editor.projectName || 'default_project';
+        const response = await fetch('/api/upload-asset', {
+            method: 'POST',
+            headers: {
+                'x-project-name': encodeURIComponent(projectName),
+                'x-asset-type': encodeURIComponent(assetType),
+                'x-filename': encodeURIComponent(file.name)
+            },
+            body: file
+        });
+        const result = await response.json();
+        if (result.success) {
+            return '/' + result.path.replace(/\\/g, '/');
+        } else {
+            throw new Error(result.error);
+        }
     }
 
     init() {
@@ -30,37 +72,132 @@ export class UIManager {
     }
 
     rebuildLibrary() {
-        const newLib = [];
-        this.app.editor.objects.forEach(obj => {
-            if (obj.userData.isAsset || obj.userData.isPlayer) {
-                const name = obj.name;
-                const type = obj.userData.type || (obj.userData.isPlayer ? 'Player' : 'Unknown');
-                const data = obj.userData.glbSource || null;
-                const defaultAnim = obj.userData.defaultAnim || null;
+        const getB64 = (s) => {
+            if (!s || typeof s !== 'string') return '';
+            const idx = s.indexOf(',');
+            return idx !== -1 ? s.substring(idx + 1) : s;
+        };
+        const matchData = (d1, d2) => {
+            if (!d1 && !d2) return true;
+            if (!d1 || !d2) return false;
+            return getB64(d1) === getB64(d2);
+        };
 
-                const exists = newLib.find(i => i.name === name && i.type === type && i.data === data);
-                if (!exists) {
-                    newLib.push({ name, type, data, defaultAnim });
+        const uniqueLib = [];
+
+        const addUnique = (item) => {
+            if (!item || !item.type || item.type === 'undefined') return;
+            let name = item.name || item.type;
+            const type = item.type;
+            const data = item.data || null;
+            const defaultAnim = item.defaultAnim || null;
+
+            // Per i tipi di asset standard (non-Model e non-SplatEnv), la card nell'Asset Library
+            // rappresenta il TEMPLATE e ha sempre il nome standard del tipo ('Player', 'Main Camera', 'DirectionalLight', etc.)
+            if (type !== 'Model' && type !== 'SplatEnv') {
+                if (type === 'Player') name = 'Player';
+                else if (type === 'Camera') name = 'Main Camera';
+                else name = type;
+            }
+
+            // Per i tipi standard esiste al massimo UNA sola card di template nella libreria.
+            // Per i Modelli GLB e i file SplatEnv personalizzati, ciascuna sorgente univoca ha la sua card.
+            const exists = uniqueLib.find(i => {
+                if (type === 'Model' || type === 'SplatEnv') {
+                    return i.type === type && i.name === name && matchData(i.data, data);
+                } else {
+                    return i.type === type;
                 }
+            });
+
+            if (!exists) {
+                uniqueLib.push({ name, type, data, defaultAnim });
+            }
+        };
+
+        // 1. Inserisci prima le definizioni correnti nella library
+        (this.library || []).forEach(item => addUnique(item));
+
+        // 2. Registra eventuali sorgenti GLB / SplatEnv personalizzate attive negli oggetti della scena
+        this.app.editor.objects.forEach(obj => {
+            if (obj.userData.type === 'Model' && obj.userData.glbSource) {
+                addUnique({
+                    name: obj.userData.glbFilename || 'Model',
+                    type: 'Model',
+                    data: obj.userData.glbSource,
+                    defaultAnim: obj.userData.defaultAnim
+                });
+            } else if (obj.userData.type === 'SplatEnv' && obj.userData.splatSource) {
+                addUnique({
+                    name: obj.userData.glbFilename || 'SplatEnv',
+                    type: 'SplatEnv',
+                    data: obj.userData.splatSource
+                });
             }
         });
 
-        const playerIdx = newLib.findIndex(i => i.type === 'Player');
+        // 3. Rimuovi modelli personalizzati vuoti o non più referenziati
+        const finalLib = uniqueLib.filter(item => {
+            if (item.type === 'Model') {
+                if (!item.data || item.name === 'Model' || item.name === 'Unknown' || item.name.startsWith('Model_')) {
+                    return false;
+                }
+                return this.app.editor.objects.some(obj => matchData(obj.userData.glbSource, item.data));
+            }
+            if (item.type === 'Camera' && item.name === 'Camera') {
+                return false;
+            }
+            return true;
+        });
+
+        // Posiziona il Player come primo elemento
+        const playerIdx = finalLib.findIndex(i => i.type === 'Player');
         if (playerIdx > 0) {
-            const p = newLib.splice(playerIdx, 1)[0];
-            newLib.unshift(p);
+            const p = finalLib.splice(playerIdx, 1)[0];
+            finalLib.unshift(p);
         }
 
-        this.library = newLib;
+        this.library = finalLib;
         this.restoreLibrary(this.library);
     }
 
     restoreLibrary(libraryData) {
         this.library = [];
         const content = document.getElementById('asset-content');
-        content.innerHTML = '';
+        if (content) content.innerHTML = '';
+        
         if (libraryData) {
-            libraryData.forEach(item => this.createAssetCard(item.name, item.type, item.data, true, item.defaultAnim));
+            const getB64 = (s) => {
+                if (!s || typeof s !== 'string') return '';
+                const idx = s.indexOf(',');
+                return idx !== -1 ? s.substring(idx + 1) : s;
+            };
+            const matchData = (d1, d2) => {
+                if (!d1 && !d2) return true;
+                if (!d1 || !d2) return false;
+                return getB64(d1) === getB64(d2);
+            };
+
+            const cleanedList = [];
+            libraryData.forEach(item => {
+                let name = item.name;
+                const type = item.type;
+                const data = item.data || null;
+                const defaultAnim = item.defaultAnim;
+
+                // Rimuovi suffissi numerici di istanza (es. "Enemy_3" -> "Enemy") ad esclusione dei modelli GLB caricati
+                if (type !== 'Model' && typeof name === 'string' && name.match(/_[0-9]+$/)) {
+                    name = type;
+                }
+
+                // Evita duplicati basati su nome normalizzato, tipo e sorgente
+                const exists = cleanedList.find(i => i.name === name && i.type === type && matchData(i.data, data));
+                if (!exists) {
+                    cleanedList.push({ name, type, data, defaultAnim });
+                }
+            });
+
+            cleanedList.forEach(item => this.createAssetCard(item.name, item.type, item.data, true, item.defaultAnim));
         }
     }
 
@@ -81,31 +218,44 @@ export class UIManager {
 
         menu.querySelectorAll('.asset-menu-item').forEach(item => {
             item.onclick = (e) => {
-                const type = e.target.dataset.type;
+                const menuItem = e.target.closest('.asset-menu-item') || item;
+                const type = menuItem ? menuItem.dataset.type : null;
+                if (!type || type === 'undefined') return;
+
                 if (type === 'Player') {
                     this.createAssetCard('Player', 'Player', null, true);
+                } else if (type === 'Camera') {
+                    this.createAssetCard('Main Camera', 'Camera', null, true);
                 } else if (type === 'load') {
                     const input = document.createElement('input');
                     input.type = 'file'; input.accept = '.glb,.gltf';
-                    input.onchange = (ev) => {
+                    input.onchange = async (ev) => {
                         const file = ev.target.files[0];
                         if (file) {
-                            const reader = new FileReader();
-                            reader.onload = (f) => this.createAssetCard(file.name, 'Model', f.target.result, true);
-                            reader.readAsDataURL(file);
+                            try {
+                                this.app.ui.showToast(`Uploading ${file.name}...`, 2000);
+                                const url = await this.uploadAssetFile(file, 'assets');
+                                this.createAssetCard(file.name, 'Model', url, true);
+                            } catch (err) {
+                                console.error("Upload error:", err);
+                                alert("Errore caricamento file: " + err.message);
+                            }
                         }
                     };
                     input.click();
                 } else if (type === 'SplatEnv') {
                     const splatInput = document.getElementById('splat-input');
-                    splatInput.onchange = (ev) => {
+                    splatInput.onchange = async (ev) => {
                         const file = ev.target.files[0];
                         if (file) {
-                            const reader = new FileReader();
-                            reader.onload = (f) => {
-                                this.createAssetCard(file.name, 'SplatEnv', f.target.result, true);
-                            };
-                            reader.readAsDataURL(file);
+                            try {
+                                this.app.ui.showToast(`Uploading ${file.name}...`, 2000);
+                                const url = await this.uploadAssetFile(file, 'assets');
+                                this.createAssetCard(file.name, 'SplatEnv', url, true);
+                            } catch (err) {
+                                console.error("Upload error:", err);
+                                alert("Errore caricamento file: " + err.message);
+                            }
                         }
                         splatInput.value = '';
                     };
@@ -150,9 +300,21 @@ export class UIManager {
     }
 
     createAssetCard(name, type, data = null, addToLibraryArray = false, defaultAnim = null) {
+        const normData = data || null;
         if (addToLibraryArray) {
-            const exists = this.library.find(item => item.name === name && item.type === type && item.data === data);
-            if (!exists) this.library.push({ name, type, data, defaultAnim });
+            const getB64 = (s) => {
+                if (!s || typeof s !== 'string') return '';
+                const idx = s.indexOf(',');
+                return idx !== -1 ? s.substring(idx + 1) : s;
+            };
+            const matchData = (d1, d2) => {
+                if (!d1 && !d2) return true;
+                if (!d1 || !d2) return false;
+                return getB64(d1) === getB64(d2);
+            };
+
+            const exists = this.library.find(item => item.name === name && item.type === type && matchData(item.data, normData));
+            if (!exists) this.library.push({ name, type, data: normData, defaultAnim });
         }
 
         const content = document.getElementById('asset-content');
@@ -176,22 +338,23 @@ export class UIManager {
         if (type === 'SplatEnv') color = '#8844ff', icon = '🌌';
         if (type === 'Analyze') color = '#33cccc', icon = '🔍';
         if (type === 'Dialog') color = '#7733cc', icon = '💬';
+        if (type === 'Camera') color = '#555555', icon = '🎥';
+        if (type === 'EmbedHTML') color = '#ff00ff', icon = '🌐';
+        if (type === 'CutScene') color = '#0099ff', icon = '🎬';
+        if (type === 'SoundEffect') color = '#ff66aa', icon = '🔊';
 
         card.style.borderColor = color;
-        const thumbId = `thumb-${Math.floor(Math.random() * 1000000)}`;
-        card.innerHTML = `
-            <div class="asset-icon" id="icon-${thumbId}">${icon}</div>
-            <div style="font-size:9px; font-weight:bold; color:#888; margin-top:4px;">${type}</div>
-            <div class="asset-label" style="color:${color}">${name}</div>
-        `;
+        const thumbId = "thumb-" + (Math.floor(Math.random() * 1000000));
+        card.innerHTML = "\n            <div class=\"asset-icon\" id=\"icon-" + (thumbId) + "\">" + (icon) + "</div>\n            <div style=\"font-size:9px; font-weight:bold; color:#888; margin-top:4px;\">" + (type) + "</div>\n            <div class=\"asset-label\" style=\"color:" + (color) + "\">" + (name) + "</div>\n        ";
 
-        if (data && type !== 'SplatEnv') {
+        const isGLTFType = ['Enemy', 'Bonus', 'Boss', 'PowerUp', 'Spawn', 'Goal', 'Catcher', 'catcher_base', 'Model'].includes(type);
+        if (data && isGLTFType) {
             new GLTFLoader().load(data, (gltf) => {
                 const iconDiv = card.querySelector('.asset-icon');
                 // Ensure iconDiv still exists (card might be removed)
                 if (iconDiv) {
-                    const imgId = `img-${thumbId}`;
-                    iconDiv.innerHTML = `<img id="${imgId}" style="width:100%; height:100%; object-fit:contain;">`;
+                    const imgId = "img-" + (thumbId);
+                    iconDiv.innerHTML = "<img id=\"" + (imgId) + "\" style=\"width:100%; height:100%; object-fit:contain;\">";
                     this.generateThumbnail(gltf.scene, imgId);
                 }
             });
@@ -203,6 +366,112 @@ export class UIManager {
             if (data && type !== 'SplatEnv') e.dataTransfer.setData('asset-data', data);
             if (defaultAnim) e.dataTransfer.setData('asset-default-anim', defaultAnim);
         });
+
+        card.addEventListener('contextmenu', (e) => {
+            e.preventDefault();
+            e.stopPropagation();
+
+            let menu = document.getElementById('asset-context-menu');
+            if (!menu) {
+                menu = document.createElement('div');
+                menu.id = 'asset-context-menu';
+                menu.style.cssText = "\n                    position: fixed;\n                    z-index: 10000;\n                    background: #1e1e24;\n                    border: 1px solid #3e3e4a;\n                    box-shadow: 0 10px 30px rgba(0,0,0,0.6);\n                    border-radius: 6px;\n                    padding: 4px 0;\n                    font-size: 11px;\n                    font-family: sans-serif;\n                    min-width: 150px;\n                ";
+                document.body.appendChild(menu);
+            }
+
+            menu.style.left = e.clientX + 'px';
+            menu.style.top = e.clientY + 'px';
+            menu.style.display = 'block';
+
+            menu.innerHTML = '';
+
+            // Option 1: Sostituisci Asset
+            const isReplaceable = ['Model', 'SplatEnv', 'CutScene', 'SoundEffect'].includes(type);
+            if (isReplaceable) {
+                const repOpt = document.createElement('div');
+                repOpt.innerHTML = '🔄 Sostituisci Asset';
+                repOpt.style.cssText = 'padding: 8px 14px; cursor: pointer; color: #00ffcc; font-weight: bold;';
+                repOpt.onmouseover = () => repOpt.style.background = '#2c2c35';
+                repOpt.onmouseout = () => repOpt.style.background = 'none';
+                repOpt.onclick = () => {
+                    menu.style.display = 'none';
+                    const input = document.createElement('input');
+                    input.type = 'file';
+                    if (type === 'Model') input.accept = '.glb,.gltf';
+                    else if (type === 'SplatEnv') input.accept = '.ply,.splat';
+                    else if (type === 'CutScene') input.accept = 'video/*';
+                    else if (type === 'SoundEffect') input.accept = 'audio/*';
+
+                    input.onchange = (ev) => {
+                        const file = ev.target.files[0];
+                        if (file) {
+                            const reader = new FileReader();
+                            reader.onload = (f) => {
+                                // 1. Update library array item
+                                const idx = this.library.findIndex(item => item.type === type && item.data === data && item.name === name);
+                                if (idx > -1) {
+                                    this.library[idx].data = f.target.result;
+                                    this.library[idx].name = file.name;
+                                }
+
+                                // 2. Update active scene objects using this asset data
+                                this.app.editor.objects.forEach(o => {
+                                    if (o.userData.type === type) {
+                                        if (type === 'Model' && o.userData.glbSource === data) {
+                                            o.name = file.name;
+                                            o.userData.glbSource = f.target.result;
+                                            o.userData.glbFilename = file.name;
+                                            this.app.editor.reloadModel(o, f.target.result);
+                                        } else if (type === 'SplatEnv' && o.userData.splatSource === data) {
+                                            o.name = file.name;
+                                            o.userData.splatSource = f.target.result;
+                                            o.userData.splatFilename = file.name;
+                                            this.app.editor.reloadSplat(o);
+                                        } else if (type === 'CutScene' && o.userData.videoSource === data) {
+                                            o.name = file.name;
+                                            o.userData.videoSource = f.target.result;
+                                            o.userData.videoFilename = file.name;
+                                        } else if (type === 'SoundEffect' && o.userData.audioSource === data) {
+                                            o.name = file.name;
+                                            o.userData.audioSource = f.target.result;
+                                            o.userData.audioFilename = file.name;
+                                        }
+                                    }
+                                });
+
+                                // 3. Refresh and update UI
+                                this.restoreLibrary(this.library);
+                                this.updateProperties();
+                            };
+                            reader.readAsDataURL(file);
+                        }
+                    };
+                    input.click();
+                };
+                menu.appendChild(repOpt);
+            }
+
+            // Option 2: Elimina Asset (only if not Player)
+            if (type !== 'Player') {
+                const delOpt = document.createElement('div');
+                delOpt.innerHTML = '❌ Elimina Asset';
+                delOpt.style.cssText = 'padding: 8px 14px; cursor: pointer; color: #ff5555; border-top: 1px solid #2e2e38;';
+                delOpt.onmouseover = () => delOpt.style.background = '#2c2c35';
+                delOpt.onmouseout = () => delOpt.style.background = 'none';
+                delOpt.onclick = () => {
+                    this.removeAsset(type, data);
+                    menu.style.display = 'none';
+                };
+                menu.appendChild(delOpt);
+            }
+
+            const closeMenu = () => {
+                menu.style.display = 'none';
+                document.removeEventListener('click', closeMenu);
+            };
+            setTimeout(() => document.addEventListener('click', closeMenu), 50);
+        });
+
         content.appendChild(card);
     }
 
@@ -241,6 +510,10 @@ export class UIManager {
 
     setupToolbar() {
         document.getElementById('btn-undo').onclick = () => this.app.editor.undo();
+        const btnRedo = document.getElementById('btn-redo');
+        if (btnRedo) {
+            btnRedo.onclick = () => this.app.editor.redo();
+        }
         document.getElementById('btn-trans').onclick = () => { this.app.editor.gizmo.setMode('translate'); this.setActiveTool('btn-trans'); };
         document.getElementById('btn-rot').onclick = () => { this.app.editor.gizmo.setMode('rotate'); this.setActiveTool('btn-rot'); };
         document.getElementById('btn-scale').onclick = () => { this.app.editor.gizmo.setMode('scale'); this.setActiveTool('btn-scale'); };
@@ -251,13 +524,129 @@ export class UIManager {
         document.getElementById('snap-rot').onchange = (e) => this.app.editor.setRotationSnap(e.target.checked);
         document.getElementById('snap-scale').onchange = (e) => this.app.editor.setScaleSnap(e.target.checked);
 
+        const gizmoCenter = document.getElementById('gizmo-center');
+        if (gizmoCenter) {
+            gizmoCenter.onchange = (e) => this.app.editor.toggleGizmoCenter();
+        }
+
+        const btnGameView = document.getElementById('btn-game-view');
+        if (btnGameView) {
+            btnGameView.onclick = () => {
+                document.body.classList.toggle('game-view-mode');
+                const isGameView = document.body.classList.contains('game-view-mode');
+                btnGameView.classList.toggle('game-view-active', isGameView);
+                
+                // Toggle gizmo visibility in game view mode
+                if (this.app.editor.gizmo) {
+                    if (isGameView) {
+                        this.app.editor.gizmo.detach();
+                    } else if (this.app.editor.selected) {
+                        this.app.editor.gizmo.attach(this.app.editor.selected);
+                    }
+                }
+                
+                setTimeout(() => this.app.sceneManager.onResize(), 300);
+            };
+        }
+
+        // Footer Tabs Navigation
+        const tabBtns = document.querySelectorAll('.footer-tab-btn');
+        tabBtns.forEach(btn => {
+            btn.onclick = () => {
+                tabBtns.forEach(b => {
+                    b.classList.remove('active');
+                    b.style.color = '#888';
+                });
+                btn.classList.add('active');
+                btn.style.color = '#fff';
+
+                const tab = btn.getAttribute('data-tab');
+                document.getElementById('footer-tab-assets').classList.toggle('hidden', tab !== 'assets');
+                document.getElementById('footer-tab-sequencer').classList.toggle('hidden', tab !== 'sequencer');
+                this.updateSequencerUI();
+            };
+        });
+
+        // Sequencer bindings
+        const seqRecord = document.getElementById('seq-record');
+        if (seqRecord) {
+            seqRecord.onclick = () => {
+                const actor = this.app.editor.selected;
+                if (!actor) {
+                    alert("Seleziona prima un oggetto!");
+                    return;
+                }
+                const time = this.app.sceneManager.seqTime;
+                
+                // Remove duplicates at same time
+                this.app.sceneManager.keyframes = this.app.sceneManager.keyframes.filter(k => !(k.actorId === actor.uuid && k.time === time));
+                
+                this.app.sceneManager.keyframes.push({
+                    actorId: actor.uuid,
+                    time: time,
+                    pos: actor.position.clone(),
+                    rot: actor.rotation.clone(),
+                    scl: actor.scale.clone()
+                });
+                
+                this.updateSequencerUI();
+            };
+        }
+
+        const seqPlay = document.getElementById('seq-play');
+        if (seqPlay) {
+            seqPlay.onclick = () => {
+                this.app.sceneManager.isSeqPlaying = true;
+                document.getElementById('seq-playback-status').textContent = 'Playing';
+            };
+        }
+
+        const seqStop = document.getElementById('seq-stop');
+        if (seqStop) {
+            seqStop.onclick = () => {
+                this.app.sceneManager.isSeqPlaying = false;
+                document.getElementById('seq-playback-status').textContent = 'Stopped';
+            };
+        }
+
+        const seqLoop = document.getElementById('seq-loop');
+        if (seqLoop) {
+            seqLoop.onclick = () => {
+                this.app.sceneManager.seqLoop = !this.app.sceneManager.seqLoop;
+                seqLoop.classList.toggle('active', this.app.sceneManager.seqLoop);
+                seqLoop.style.background = this.app.sceneManager.seqLoop ? '#4f46e5' : '#262a32';
+            };
+        }
+
+        const seqClear = document.getElementById('seq-clear');
+        if (seqClear) {
+            seqClear.onclick = () => {
+                this.app.sceneManager.keyframes = [];
+                this.updateSequencerUI();
+            };
+        }
+
+        const timelineBar = document.getElementById('timeline-bar');
+        if (timelineBar) {
+            timelineBar.onclick = (e) => {
+                const rect = timelineBar.getBoundingClientRect();
+                const pct = ((e.clientX - rect.left) / rect.width) * 100;
+                this.app.sceneManager.seqTime = Math.max(0, Math.min(100, pct));
+                const playhead = document.getElementById('timeline-playhead');
+                if (playhead) {
+                    playhead.style.left = `${this.app.sceneManager.seqTime}%`;
+                }
+                this.app.sceneManager.interpolateSequencer();
+            };
+        }
+
         // Global Key Listener
         window.addEventListener('keydown', (e) => {
             if (this.app.game && this.app.game.isPlaying) {
                 if (e.key === ' ' || e.code === 'Space') e.preventDefault();
                 if (e.key === 'Escape') {
                     this.app.game.stop();
-                const btnPlay = document.getElementById('btn-play');
+                    const btnPlay = document.getElementById('btn-play');
                     if (btnPlay) btnPlay.classList.remove('play-active');
                 }
                 return;
@@ -272,17 +661,14 @@ export class UIManager {
                 this.app.game.stop();
                 btnPlay.classList.remove('play-active');
             } else {
-                // Load designated starting level then start
-                const startIdx = this.app.editor.startingLevelIndex;
-                const currentIdx = this.app.editor.currentLevelIndex;
+                // Load the currently active level being edited then start
+                const currentIdx = this.app.editor.currentLevelIndex >= 0 ? this.app.editor.currentLevelIndex : 0;
 
-                // If playing the current active level, update the slot first
-                if (startIdx === currentIdx && currentIdx >= 0) {
-                    this.app.editor.updateLevel(currentIdx);
-                }
+                // Update the slot first before playing
+                this.app.editor.updateLevel(currentIdx);
 
-                await this.app.editor.loadLevelByIndex(startIdx);
-                this.app.game.start(startIdx);
+                await this.app.editor.loadLevelByIndex(currentIdx);
+                this.app.game.start(currentIdx);
                 btnPlay.classList.add('play-active');
             }
         };
@@ -323,7 +709,7 @@ export class UIManager {
 
                     // --- THUMBNAIL ---
                     const thumb = document.createElement('div');
-                    thumb.style.cssText = `position:relative;aspect-ratio:16/9;background:${proj.splashImage ? `url(${proj.splashImage}) center/cover` : 'linear-gradient(135deg,#1e293b,#0f172a)'};cursor:pointer;overflow:hidden;`;
+                    thumb.style.cssText = "position:relative;aspect-ratio:16/9;background:" + (proj.splashImage ? "url(" + (proj.splashImage) + ") center/cover" : 'linear-gradient(135deg,#1e293b,#0f172a)') + ";cursor:pointer;overflow:hidden;";
 
                     // Overlay gradiente con titolo
                     const overlay = document.createElement('div');
@@ -347,7 +733,7 @@ export class UIManager {
                     btnDel.onmouseout  = () => { btnDel.style.background = 'rgba(239,68,68,0.2)'; };
                     btnDel.onclick = async (e) => {
                         e.stopPropagation();
-                        if (!confirm(`Eliminare definitivamente il progetto "${proj.name}"?`)) return;
+                        if (!confirm("Eliminare definitivamente il progetto \"" + (proj.name) + "\"?")) return;
                         try {
                             const r = await fetch('/api/delete-project', { method:'POST', headers:{'Content-Type':'application/json'}, body: JSON.stringify({ projectName: proj.name }) });
                             const d = await r.json();
@@ -355,13 +741,13 @@ export class UIManager {
                             else { alert('Errore eliminazione: ' + (d.error || 'sconosciuto')); }
                         } catch(err) { alert('Impossibile contattare il server.'); }
                     };
-                    thumb.appendChild(btnDel);
 
                     // Click su thumbnail = carica progetto completo
                     const loadProjectData = async () => {
                         projectModal.classList.add('hidden');
+                        this.showLoading(`Caricamento progetto "${proj.name}"...`);
                         try {
-                            const projRes = await fetch(`./projects/${proj.name}/project.json?t=${Date.now()}`);
+                            const projRes = await fetch("./projects/" + (proj.name) + "/project.json?t=" + (Date.now()));
                             if (!projRes.ok) throw new Error('Impossibile scaricare project.json');
                             const projData = await projRes.json();
 
@@ -393,13 +779,15 @@ export class UIManager {
                             if (this.renderLevelList) this.renderLevelList();
 
                             const startIdx = this.app.editor.startingLevelIndex;
-                            if (this.app.editor.levels.length > 0) {
+                            if (Array.isArray(this.app.editor.levels) && this.app.editor.levels.length > 0) {
                                 await this.app.editor.loadLevelByIndex(startIdx);
                             }
                             this.update();
                         } catch(err) {
                             console.error('[ProjectSelector] Errore caricamento progetto:', err);
-                            if (this.showModalAlert) this.showModalAlert('Errore', `⚠️ Impossibile caricare il progetto "${proj.name}".\n${err.message}`);
+                            if (this.showModalAlert) this.showModalAlert('Errore', "⚠️ Impossibile caricare il progetto \"" + (proj.name) + "\".\n" + (err.message));
+                        } finally {
+                            this.hideLoading();
                         }
                     };
                     overlay.onclick = loadProjectData;
@@ -430,14 +818,15 @@ export class UIManager {
                     if (proj.levels && proj.levels.length > 0) {
                         proj.levels.forEach(lvlFile => {
                             const btn = document.createElement('button');
-                            btn.textContent = `📂 ${lvlFile}`;
+                            btn.textContent = "📂 " + (lvlFile);
                             btn.style.cssText = 'text-align:left;padding:5px 8px;font-size:10px;background:rgba(255,255,255,0.03);border:1px solid rgba(255,255,255,0.06);color:#ccc;border-radius:4px;cursor:pointer;';
                             btn.onclick = async (e) => {
                                 e.stopPropagation();
                                 projectModal.classList.add('hidden');
+                                this.showLoading(`Caricamento livello "${lvlFile}"...`);
                                 try {
                                     this.app.editor.projectName = proj.name;
-                                    const lvlRes = await fetch(`./projects/${proj.name}/levels/${lvlFile}?t=${Date.now()}`);
+                                    const lvlRes = await fetch("./projects/" + (proj.name) + "/levels/" + (lvlFile) + "?t=" + (Date.now()));
                                     if (!lvlRes.ok) throw new Error('File livello non trovato');
                                     const lvlData = await lvlRes.json();
                                     this.app.editor.clearScene();
@@ -448,8 +837,17 @@ export class UIManager {
                                     // Restore rendering settings
                                     if (lvlData.gamePBR !== undefined)     this.app.sceneManager.setPBROutput(lvlData.gamePBR);
                                     if (lvlData.gameShadows !== undefined)  this.app.sceneManager.setShadows(lvlData.gameShadows);
+                                    if (lvlData.gameReflections !== undefined) this.app.sceneManager.setReflections(lvlData.gameReflections);
+                                    if (lvlData.gameExposure !== undefined) this.app.sceneManager.setExposure(lvlData.gameExposure);
+                                    if (lvlData.gamePixelEffect !== undefined) this.app.sceneManager.setPixelEffect(lvlData.gamePixelEffect, lvlData.gamePixelSize || 6);
+                                    if (lvlData.gameBloomEffect !== undefined) this.app.sceneManager.setBloomEffect(lvlData.gameBloomEffect, lvlData.gameBloomStrength, lvlData.gameBloomRadius);
+                                    if (lvlData.gameCyberpunkEffect !== undefined) this.app.sceneManager.setCyberpunkEffect(lvlData.gameCyberpunkEffect, lvlData.gameCyberpunkAberration, lvlData.gameCyberpunkScanlines);
+                                    if (lvlData.gameSkyboxData !== undefined) this.app.sceneManager.setSkybox(lvlData.gameSkyboxData, lvlData.gameSkyboxFilename || "");
+                                    if (lvlData.gameSkyboxIntensity !== undefined) this.app.sceneManager.setSkyboxIntensity(lvlData.gameSkyboxIntensity);
+                                    if (lvlData.gameSkyboxVisible !== undefined) this.app.sceneManager.setSkyboxVisibility(lvlData.gameSkyboxVisible);
 
                                     // Sync level slot
+                                    if (!Array.isArray(this.app.editor.levels)) this.app.editor.levels = [];
                                     const existingIdx = this.app.editor.levels.findIndex(l => l.externalFilename === lvlFile);
                                     if (existingIdx >= 0) {
                                         this.app.editor.currentLevelIndex = existingIdx;
@@ -462,7 +860,9 @@ export class UIManager {
                                     this.update();
                                 } catch(err) {
                                     console.error('[ProjectSelector] Errore caricamento livello:', err);
-                                    if (this.showModalAlert) this.showModalAlert('Errore', `⚠️ Impossibile caricare "${lvlFile}".`);
+                                    if (this.showModalAlert) this.showModalAlert('Errore', "⚠️ Impossibile caricare il livello \"" + (lvlFile) + "\".\n" + (err.message));
+                                } finally {
+                                    this.hideLoading();
                                 }
                             };
                             lvlList.appendChild(btn);
@@ -485,13 +885,13 @@ export class UIManager {
                     btnCreate.onclick = (e) => {
                         e.stopPropagation();
                         if (this.showModalPrompt) {
-                            this.showModalPrompt('Nuovo Livello JSON', `Nome del file JSON per il progetto "${proj.name}":`, '', async (name) => {
+                            this.showModalPrompt('Nuovo Livello JSON', "Nome del file JSON per il progetto \"" + (proj.name) + "\":", '', async (name) => {
                                 if (!name) return;
                                 try {
                                     const r = await fetch('/api/create-level', { method:'POST', headers:{'Content-Type':'application/json'}, body: JSON.stringify({ projectName:proj.name, levelName:name }) });
                                     const d = await r.json();
                                     if (d.success) {
-                                        if (this.showModalAlert) this.showModalAlert('Livello Creato', `✓ File "${d.filename}" creato nel progetto "${proj.name}".`);
+                                        if (this.showModalAlert) this.showModalAlert('Livello Creato', "✓ File \"" + (d.filename) + "\" creato nel progetto \"" + (proj.name) + "\".");
                                     } else { if (this.showModalAlert) this.showModalAlert('Errore', '⚠️ ' + (d.error || 'Errore sconosciuto')); }
                                 } catch(err) { if (this.showModalAlert) this.showModalAlert('Errore', '⚠️ Impossibile contattare il server.'); }
                             });
@@ -537,7 +937,7 @@ export class UIManager {
                             if (d.success) {
                                 this.app.editor.projectName = d.projectName;
                                 projectModal.classList.add('hidden');
-                                if (this.showModalAlert) this.showModalAlert('Progetto Creato', `✓ Progetto "${d.projectName}" creato con successo!`);
+                                if (this.showModalAlert) this.showModalAlert('Progetto Creato', "✓ Progetto \"" + (d.projectName) + "\" creato con successo!");
                             } else {
                                 if (this.showModalAlert) this.showModalAlert('Errore', '⚠️ ' + (d.error || 'Nome non valido'));
                             }
@@ -584,7 +984,7 @@ export class UIManager {
         // Gestione Accordion Game Properties collassabili
         document.querySelectorAll('.game-accordion-header').forEach(header => {
             header.onclick = () => {
-                const targetId = `accordion-${header.dataset.accordion}`;
+                const targetId = "accordion-" + (header.dataset.accordion);
                 const targetContent = document.getElementById(targetId);
                 
                 // Toggle l'attuale cliccato
@@ -605,19 +1005,24 @@ export class UIManager {
             };
         }
         document.getElementById('btn-import').onclick = () => document.getElementById('glb-input').click();
-        document.getElementById('glb-input').onchange = (e) => {
+        document.getElementById('glb-input').onchange = async (e) => {
             const file = e.target.files[0];
             if (file) {
-                const reader = new FileReader();
-                reader.onload = (ev) => {
-                    const dataUrl = ev.target.result;
+                try {
+                    this.showToast(`Uploading ${file.name}...`, 2000);
+                    const url = await this.uploadAssetFile(file, 'assets');
                     const container = document.getElementById('glb-preview-container'), nameInput = document.getElementById('glb-filename');
                     if (container) container.style.display = 'flex';
                     if (nameInput) nameInput.value = file.name;
-                    if (this.app.editor.selected) this.app.editor.selected.userData.glbFilename = file.name;
-                    this.app.editor.loadGLB(dataUrl, (m) => this.generateThumbnail(m, 'glb-preview-img'));
-                };
-                reader.readAsDataURL(file);
+                    if (this.app.editor.selected) {
+                        this.app.editor.selected.userData.glbFilename = file.name;
+                        this.app.editor.selected.userData.glbSource = url;
+                    }
+                    this.app.editor.loadGLB(url, (m) => this.generateThumbnail(m, 'glb-preview-img'));
+                } catch (err) {
+                    console.error("Upload error:", err);
+                    alert("Errore caricamento file: " + err.message);
+                }
             }
         };
         const btnAlign = document.getElementById('btn-align-view');
@@ -628,6 +1033,7 @@ export class UIManager {
                     const editorCam = this.app.sceneManager.camera;
                     selected.position.copy(editorCam.position);
                     selected.quaternion.copy(editorCam.quaternion);
+                    selected.userData.isAligned = true;
 
                     // Also align internal camera object
                     const internalCam = selected.children.find(c => c.isCamera);
@@ -644,6 +1050,13 @@ export class UIManager {
     }
 
     setupInputs() {
+        const outlinerFilter = document.getElementById('outliner-filter');
+        if (outlinerFilter) {
+            outlinerFilter.oninput = () => {
+                this.updateOutliner();
+            };
+        }
+
         document.getElementById('obj-name-input').onchange = (e) => {
             if (this.app.editor.selected) {
                 this.app.editor.selected.name = e.target.value;
@@ -672,15 +1085,18 @@ export class UIManager {
         if (btnSplash) btnSplash.onclick = () => {
             const input = document.createElement('input');
             input.type = 'file'; input.accept = 'image/*';
-            input.onchange = (e) => {
+            input.onchange = async (e) => {
                 const file = e.target.files[0];
                 if (file) {
-                    const reader = new FileReader();
-                    reader.onload = (ev) => {
-                        this.app.editor.gameSplashImage = ev.target.result;
+                    try {
+                        this.showToast(`Uploading ${file.name}...`, 2000);
+                        const url = await this.uploadAssetFile(file, 'assets');
+                        this.app.editor.gameSplashImage = url;
                         this.updateProperties(); // Refresh preview
-                    };
-                    reader.readAsDataURL(file);
+                    } catch (err) {
+                        console.error(err);
+                        alert("Errore upload: " + err.message);
+                    }
                 }
             };
             input.click();
@@ -690,16 +1106,19 @@ export class UIManager {
         if (btnSplashMusic) btnSplashMusic.onclick = () => {
             const input = document.createElement('input');
             input.type = 'file'; input.accept = 'audio/*';
-            input.onchange = (e) => {
+            input.onchange = async (e) => {
                 const file = e.target.files[0];
                 if (file) {
-                    const reader = new FileReader();
-                    reader.onload = (ev) => {
-                        this.app.editor.gameSplashMusic = ev.target.result;
+                    try {
+                        this.showToast(`Uploading ${file.name}...`, 2000);
+                        const url = await this.uploadAssetFile(file, 'music');
+                        this.app.editor.gameSplashMusic = url;
                         this.app.editor.gameSplashMusicFilename = file.name;
                         this.updateProperties(); // Refresh UI
-                    };
-                    reader.readAsDataURL(file);
+                    } catch (err) {
+                        console.error(err);
+                        alert("Errore upload: " + err.message);
+                    }
                 }
             };
             input.click();
@@ -740,24 +1159,27 @@ export class UIManager {
         if (btnEndImg) btnEndImg.onclick = () => {
             const input = document.createElement('input');
             input.type = 'file'; input.accept = 'image/*';
-            input.onchange = (e) => {
+            input.onchange = async (e) => {
                 const file = e.target.files[0]; if (!file) return;
-                const reader = new FileReader();
-                reader.onload = (ev) => {
-                    this.app.editor.gameEndImage = ev.target.result;
+                try {
+                    this.showToast(`Uploading ${file.name}...`, 2000);
+                    const url = await this.uploadAssetFile(file, 'assets');
+                    this.app.editor.gameEndImage = url;
                     this.app.editor.gameEndVideo = null;
                     const preview = document.getElementById('endscreen-image-preview');
                     const thumb = document.getElementById('endscreen-image-thumb');
                     const clearBtn = document.getElementById('btn-endscreen-image-clear');
                     const vidFilename = document.getElementById('endscreen-video-filename');
                     const vidClear = document.getElementById('btn-endscreen-video-clear');
-                    if (thumb) thumb.src = ev.target.result;
+                    if (thumb) thumb.src = url;
                     if (preview) preview.style.display = 'block';
                     if (clearBtn) clearBtn.classList.remove('hidden');
                     if (vidFilename) vidFilename.textContent = '(None)';
                     if (vidClear) vidClear.classList.add('hidden');
-                };
-                reader.readAsDataURL(file);
+                } catch (err) {
+                    console.error(err);
+                    alert("Errore upload: " + err.message);
+                }
             };
             input.click();
         };
@@ -770,17 +1192,18 @@ export class UIManager {
             if (thumb) thumb.src = '';
             btnEndImgClear.classList.add('hidden');
         };
-
+ 
         // End Screen Video
         const btnEndVid = document.getElementById('btn-endscreen-video');
         if (btnEndVid) btnEndVid.onclick = () => {
             const input = document.createElement('input');
             input.type = 'file'; input.accept = 'video/*';
-            input.onchange = (e) => {
+            input.onchange = async (e) => {
                 const file = e.target.files[0]; if (!file) return;
-                const reader = new FileReader();
-                reader.onload = (ev) => {
-                    this.app.editor.gameEndVideo = ev.target.result;
+                try {
+                    this.showToast(`Uploading ${file.name}...`, 2000);
+                    const url = await this.uploadAssetFile(file, 'assets');
+                    this.app.editor.gameEndVideo = url;
                     this.app.editor.gameEndImage = null;
                     const filenameEl = document.getElementById('endscreen-video-filename');
                     const clearBtn = document.getElementById('btn-endscreen-video-clear');
@@ -790,8 +1213,10 @@ export class UIManager {
                     if (preview) preview.style.display = 'none';
                     const imgClear = document.getElementById('btn-endscreen-image-clear');
                     if (imgClear) imgClear.classList.add('hidden');
-                };
-                reader.readAsDataURL(file);
+                } catch (err) {
+                    console.error(err);
+                    alert("Errore upload: " + err.message);
+                }
             };
             input.click();
         };
@@ -802,30 +1227,33 @@ export class UIManager {
             if (filenameEl) filenameEl.textContent = '(None)';
             btnEndVidClear.classList.add('hidden');
         };
-
+ 
         // End Screen Video Aspect Ratio
         const endVideoAspect = document.getElementById('endscreen-video-aspect');
         if (endVideoAspect) endVideoAspect.onchange = (e) => {
             this.app.editor.gameEndVideoAspect = e.target.value;
         };
-
+ 
         // End Screen Music
         const btnEndMusic = document.getElementById('btn-endscreen-music');
         if (btnEndMusic) btnEndMusic.onclick = () => {
             const input = document.createElement('input');
             input.type = 'file'; input.accept = 'audio/*';
-            input.onchange = (e) => {
+            input.onchange = async (e) => {
                 const file = e.target.files[0]; if (!file) return;
-                const reader = new FileReader();
-                reader.onload = (ev) => {
-                    this.app.editor.gameEndMusic = ev.target.result;
+                try {
+                    this.showToast(`Uploading ${file.name}...`, 2000);
+                    const url = await this.uploadAssetFile(file, 'music');
+                    this.app.editor.gameEndMusic = url;
                     this.app.editor.gameEndMusicFilename = file.name;
                     const filenameEl = document.getElementById('endscreen-music-filename');
                     const clearBtn = document.getElementById('btn-endscreen-music-clear');
                     if (filenameEl) filenameEl.textContent = file.name;
                     if (clearBtn) clearBtn.classList.remove('hidden');
-                };
-                reader.readAsDataURL(file);
+                } catch (err) {
+                    console.error(err);
+                    alert("Errore upload: " + err.message);
+                }
             };
             input.click();
         };
@@ -840,9 +1268,9 @@ export class UIManager {
 
         const axes = ['x', 'y', 'z'];
         axes.forEach(axis => {
-            const p = document.getElementById(`t-p${axis}`); if (p) p.onchange = (e) => { if (this.app.editor.selected) this.app.editor.selected.position[axis] = parseFloat(e.target.value); };
-            const r = document.getElementById(`t-r${axis}`); if (r) r.onchange = (e) => { if (this.app.editor.selected) this.app.editor.selected.rotation[axis] = THREE.MathUtils.degToRad(parseFloat(e.target.value)); };
-            const s = document.getElementById(`t-s${axis}`); if (s) s.onchange = (e) => { if (this.app.editor.selected) this.app.editor.selected.scale[axis] = parseFloat(e.target.value); };
+            const p = document.getElementById("t-p" + (axis)); if (p) p.onchange = (e) => { if (this.app.editor.selected) this.app.editor.selected.position[axis] = parseFloat(e.target.value); };
+            const r = document.getElementById("t-r" + (axis)); if (r) r.onchange = (e) => { if (this.app.editor.selected) this.app.editor.selected.rotation[axis] = THREE.MathUtils.degToRad(parseFloat(e.target.value)); };
+            const s = document.getElementById("t-s" + (axis)); if (s) s.onchange = (e) => { if (this.app.editor.selected) this.app.editor.selected.scale[axis] = parseFloat(e.target.value); };
         });
 
         // Binding Analyze
@@ -854,12 +1282,22 @@ export class UIManager {
         if (anzKey) anzKey.oninput = (e) => { if (this.app.editor.selected) this.app.editor.selected.userData.activationKey = e.target.value.toLowerCase(); };
         const anzTouch = document.getElementById('anz-touch');
         if (anzTouch) anzTouch.onchange = (e) => { if (this.app.editor.selected) this.app.editor.selected.userData.activationTouch = e.target.checked; };
+        const anzShowHint = document.getElementById('anz-show-hint');
+        if (anzShowHint) anzShowHint.onchange = (e) => { if (this.app.editor.selected) this.app.editor.selected.userData.showHint = e.target.checked; };
+        const anzHintDist = document.getElementById('anz-hint-dist');
+        if (anzHintDist) anzHintDist.onchange = (e) => { if (this.app.editor.selected) this.app.editor.selected.userData.hintDistance = parseFloat(e.target.value); };
+        const anzHintSize = document.getElementById('anz-hint-size');
+        if (anzHintSize) anzHintSize.onchange = (e) => { if (this.app.editor.selected) this.app.editor.selected.userData.hintSize = parseInt(e.target.value); };
+        const anzHintBg = document.getElementById('anz-hint-bgcolor');
+        if (anzHintBg) anzHintBg.onchange = (e) => { if (this.app.editor.selected) this.app.editor.selected.userData.hintBgColor = e.target.value; };
+        const anzHintText = document.getElementById('anz-hint-textcolor');
+        if (anzHintText) anzHintText.onchange = (e) => { if (this.app.editor.selected) this.app.editor.selected.userData.hintTextColor = e.target.value; };
 
         const btnAnzImport = document.getElementById('btn-analyze-import');
         if (btnAnzImport) {
             btnAnzImport.onclick = () => {
                 const input = document.createElement('input');
-                input.type = 'file'; input.accept = '.glb,.gltf';
+                input.type = 'file'; input.accept = '.glb,.gltf,.png,.jpg,.jpeg';
                 input.onchange = (e) => {
                     const file = e.target.files[0];
                     if (file) {
@@ -1019,6 +1457,36 @@ export class UIManager {
             this.app.editor.gameSkyboxIntensity = val;
         };
 
+        const envSunPitch = document.getElementById('env-sun-pitch');
+        if (envSunPitch) envSunPitch.oninput = (e) => {
+            const val = parseFloat(e.target.value);
+            this.app.sceneManager.sunPitch = val;
+            this.app.sceneManager.updateSunPosition();
+            const el = document.getElementById('val-sun-pitch');
+            if (el) el.innerText = `${val}°`;
+        };
+
+        const envHdrRotation = document.getElementById('env-hdr-rotation');
+        if (envHdrRotation) envHdrRotation.oninput = (e) => {
+            const val = parseFloat(e.target.value);
+            this.app.sceneManager.hdrRotation = val;
+            this.app.sceneManager.updateEnvironment();
+            const el = document.getElementById('val-hdr-rotation');
+            if (el) el.innerText = `${val}°`;
+        };
+        const gameAmbientColor = document.getElementById('game-ambient-color');
+        if (gameAmbientColor) gameAmbientColor.oninput = (e) => {
+            this.app.sceneManager.setAmbientColor(e.target.value);
+            this.app.editor.gameAmbientColor = e.target.value;
+        };
+
+        const gameAmbientIntensity = document.getElementById('game-ambient-intensity');
+        if (gameAmbientIntensity) gameAmbientIntensity.oninput = (e) => {
+            const val = parseFloat(e.target.value);
+            this.app.sceneManager.setAmbientIntensity(val);
+            this.app.editor.gameAmbientIntensity = val;
+        };
+
         const gamePbr = document.getElementById('game-pbr');
         if (gamePbr) gamePbr.onchange = (e) => {
             this.app.sceneManager.setPBROutput(e.target.checked);
@@ -1043,6 +1511,149 @@ export class UIManager {
             this.app.sceneManager.setReflections(e.target.checked);
             this.app.editor.gameReflections = e.target.checked;
         };
+
+        // Fog
+        const gameFogType = document.getElementById('game-fog-type');
+        if (gameFogType) gameFogType.onchange = (e) => {
+            const type = e.target.value;
+            const color = document.getElementById('game-fog-color').value;
+            const density = parseFloat(document.getElementById('game-fog-density').value);
+            const near = parseFloat(document.getElementById('game-fog-near').value);
+            const far = parseFloat(document.getElementById('game-fog-far').value);
+            this.app.sceneManager.setFog(type, color, density, near, far);
+            this.updateProperties();
+        };
+        const gameFogColor = document.getElementById('game-fog-color');
+        if (gameFogColor) gameFogColor.oninput = (e) => {
+            const type = document.getElementById('game-fog-type').value;
+            this.app.sceneManager.setFog(type, e.target.value, undefined, undefined, undefined);
+        };
+        const gameFogDensity = document.getElementById('game-fog-density');
+        if (gameFogDensity) gameFogDensity.oninput = (e) => {
+            const type = document.getElementById('game-fog-type').value;
+            this.app.sceneManager.setFog(type, undefined, parseFloat(e.target.value), undefined, undefined);
+        };
+        const gameFogNear = document.getElementById('game-fog-near');
+        if (gameFogNear) gameFogNear.oninput = (e) => {
+            const type = document.getElementById('game-fog-type').value;
+            this.app.sceneManager.setFog(type, undefined, undefined, parseFloat(e.target.value), undefined);
+        };
+        const gameFogFar = document.getElementById('game-fog-far');
+        if (gameFogFar) gameFogFar.oninput = (e) => {
+            const type = document.getElementById('game-fog-type').value;
+            this.app.sceneManager.setFog(type, undefined, undefined, undefined, parseFloat(e.target.value));
+        };
+
+        // SSAO
+        const gameSsaoEnable = document.getElementById('game-ssao-enable');
+        if (gameSsaoEnable) gameSsaoEnable.onchange = (e) => {
+            const radius = parseFloat(document.getElementById('game-ssao-radius').value);
+            const intensity = parseFloat(document.getElementById('game-ssao-intensity').value);
+            this.app.sceneManager.setSSAO(e.target.checked, radius, intensity);
+        };
+        const gameSsaoRadius = document.getElementById('game-ssao-radius');
+        if (gameSsaoRadius) gameSsaoRadius.oninput = (e) => {
+            const active = document.getElementById('game-ssao-enable').checked;
+            const intensity = parseFloat(document.getElementById('game-ssao-intensity').value);
+            this.app.sceneManager.setSSAO(active, parseFloat(e.target.value), intensity);
+        };
+        const gameSsaoIntensity = document.getElementById('game-ssao-intensity');
+        if (gameSsaoIntensity) gameSsaoIntensity.oninput = (e) => {
+            const active = document.getElementById('game-ssao-enable').checked;
+            const radius = parseFloat(document.getElementById('game-ssao-radius').value);
+            this.app.sceneManager.setSSAO(active, radius, parseFloat(e.target.value));
+        };
+
+        // SSR
+        const gameSsrEnable = document.getElementById('game-ssr-enable');
+        if (gameSsrEnable) gameSsrEnable.onchange = (e) => {
+            const intensity = parseFloat(document.getElementById('game-ssr-intensity')?.value || 0.45);
+            this.app.sceneManager.setSSR(e.target.checked, intensity);
+        };
+
+        const gameSsrIntensity = document.getElementById('game-ssr-intensity');
+        if (gameSsrIntensity) gameSsrIntensity.oninput = (e) => {
+            const active = document.getElementById('game-ssr-enable')?.checked;
+            const val = parseFloat(e.target.value);
+            this.app.sceneManager.setSSR(active, val);
+        };
+
+        // Path Tracing
+        const gamePathTracingEnable = document.getElementById('game-pathtracing-enable');
+        if (gamePathTracingEnable) gamePathTracingEnable.onchange = (e) => {
+            this.app.sceneManager.setPathTracing(e.target.checked);
+        };
+        const gamePtMaxSamples = document.getElementById('game-pathtracing-max-samples');
+        if (gamePtMaxSamples) gamePtMaxSamples.onchange = (e) => {
+            const val = parseInt(e.target.value) || 200;
+            this.app.sceneManager.maxPtSamples = val;
+            this.app.sceneManager.resetPathTracing();
+        };
+
+        // Realism Effects (0beqz) Bindings
+        const updateSSGI = () => {
+            const active = document.getElementById('game-ssgi-enable')?.checked;
+            const dist = document.getElementById('game-ssgi-distance')?.value;
+            const thick = document.getElementById('game-ssgi-thickness')?.value;
+            const steps = document.getElementById('game-ssgi-steps')?.value;
+            const denoise = document.getElementById('game-ssgi-denoise')?.value;
+            this.app.sceneManager.setRealismSSGI(active, dist, thick, steps, denoise);
+            if (this.app.editor) {
+                this.app.editor.gameSSGI = { enabled: active, distance: dist, thickness: thick, steps: steps, denoise: denoise };
+            }
+        };
+        ['game-ssgi-enable', 'game-ssgi-distance', 'game-ssgi-thickness', 'game-ssgi-steps', 'game-ssgi-denoise'].forEach(id => {
+            const el = document.getElementById(id);
+            if (el) el.onchange = updateSSGI;
+        });
+
+        const updateRealismSSR = () => {
+            const active = document.getElementById('game-realism-ssr-enable')?.checked;
+            const intensity = document.getElementById('game-realism-ssr-intensity')?.value;
+            this.app.sceneManager.setRealismSSR(active, intensity);
+            if (this.app.editor) {
+                this.app.editor.gameRealismSSR = { enabled: active, intensity: intensity };
+            }
+        };
+        ['game-realism-ssr-enable', 'game-realism-ssr-intensity'].forEach(id => {
+            const el = document.getElementById(id);
+            if (el) el.onchange = updateRealismSSR;
+        });
+
+        const updateRealismAO = () => {
+            const active = document.getElementById('game-ao-enable')?.checked;
+            const type = document.getElementById('game-ao-type')?.value;
+            const radius = document.getElementById('game-ao-radius')?.value;
+            this.app.sceneManager.setRealismAO(active, type, radius);
+            if (this.app.editor) {
+                this.app.editor.gameRealismAO = { enabled: active, type: type, radius: radius };
+            }
+        };
+        ['game-ao-enable', 'game-ao-type', 'game-ao-radius'].forEach(id => {
+            const el = document.getElementById(id);
+            if (el) el.onchange = updateRealismAO;
+        });
+
+        const updateMotionBlur = () => {
+            const active = document.getElementById('game-motionblur-enable')?.checked;
+            const intensity = document.getElementById('game-motionblur-intensity')?.value;
+            this.app.sceneManager.setRealismMotionBlur(active, intensity);
+            if (this.app.editor) {
+                this.app.editor.gameMotionBlur = { enabled: active, intensity: intensity };
+            }
+        };
+        ['game-motionblur-enable', 'game-motionblur-intensity'].forEach(id => {
+            const el = document.getElementById(id);
+            if (el) el.onchange = updateMotionBlur;
+        });
+
+        const gameAaMode = document.getElementById('game-aa-mode');
+        if (gameAaMode) {
+            gameAaMode.onchange = (e) => {
+                this.app.sceneManager.setRealismAAMode(e.target.value);
+                if (this.app.editor) this.app.editor.gameAAMode = e.target.value;
+            };
+        }
 
         // Bloom
         const bloomEnable = document.getElementById('bloom-enable');
@@ -1094,9 +1705,15 @@ export class UIManager {
             this.app.editor.gameCyberpunkScanlines = val;
         };
 
+        const envVignette = document.getElementById('env-vignette');
+        if (envVignette) envVignette.oninput = (e) => {
+            const val = parseFloat(e.target.value);
+            this.app.sceneManager.vignetteStrength = val;
+            this.app.editor.gameVignetteStrength = val;
+            this.app.sceneManager.updateEnvironment();
+        };
+
         // Binding Dialog
-        const dlgQuest = document.getElementById('dlg-question');
-        if (dlgQuest) dlgQuest.oninput = (e) => { if (this.app.editor.selected) this.app.editor.selected.userData.dialogQuestion = e.target.value; };
         const dlgBg = document.getElementById('dlg-bgcolor');
         if (dlgBg) dlgBg.onchange = (e) => { if (this.app.editor.selected) this.app.editor.selected.userData.dialogBgColor = e.target.value; };
         const dlgTxt = document.getElementById('dlg-textcolor');
@@ -1106,10 +1723,101 @@ export class UIManager {
         const dlgFont = document.getElementById('dlg-font');
         if (dlgFont) dlgFont.oninput = (e) => { if (this.app.editor.selected) this.app.editor.selected.userData.dialogFont = e.target.value; };
 
+
+        const dlgActMode = document.getElementById('dlg-activation-mode');
+        if (dlgActMode) {
+            dlgActMode.addEventListener('change', () => {
+                const pKey = document.getElementById('panel-dlg-keypress');
+                if (pKey) pKey.classList.toggle('hidden', dlgActMode.value !== 'keypress');
+            });
+        }
+
+        // Dialog Questions/Answers controls
+        const btnDlgAddQ = document.getElementById('btn-dlg-add-q');
+        if (btnDlgAddQ) {
+            btnDlgAddQ.onclick = () => {
+                const sel = this.app.editor.selected;
+                if (sel?.userData.type === 'Dialog') {
+                    if (!sel.userData.dialogQuestions) sel.userData.dialogQuestions = [];
+                    sel.userData.dialogQuestions.push({
+                        text: 'Nuova Domanda',
+                        image: '',
+                        answers: []
+                    });
+                    this.activeQuestionIndex = sel.userData.dialogQuestions.length - 1;
+                    this.renderDialogQuestionsList(sel);
+                    this.renderDialogQuestionEditPanel(sel);
+                }
+            };
+        }
+
+        const btnDlgAddA = document.getElementById('btn-dlg-add-a');
+        if (btnDlgAddA) {
+            btnDlgAddA.onclick = () => {
+                const sel = this.app.editor.selected;
+                if (sel?.userData.type === 'Dialog') {
+                    const qIndex = this.activeQuestionIndex;
+                    const q = sel.userData.dialogQuestions?.[qIndex];
+                    if (q) {
+                        if (!q.answers) q.answers = [];
+                        q.answers.push({
+                            text: 'Nuova Risposta',
+                            actionType: 'close',
+                            actionValue: ''
+                        });
+                        this.renderDialogQuestionEditPanel(sel);
+                    }
+                }
+            };
+        }
+
+        const btnDlgQImg = document.getElementById('btn-dlg-q-img');
+        if (btnDlgQImg) {
+            btnDlgQImg.onclick = () => {
+                const sel = this.app.editor.selected;
+                if (sel?.userData.type === 'Dialog') {
+                    const qIndex = this.activeQuestionIndex;
+                    const q = sel.userData.dialogQuestions?.[qIndex];
+                    if (q) {
+                        const fileInput = document.createElement('input');
+                        fileInput.type = 'file';
+                        fileInput.accept = 'image/*';
+                        fileInput.onchange = (e) => {
+                            const file = e.target.files[0];
+                            if (file) {
+                                const reader = new FileReader();
+                                reader.onload = (f) => {
+                                    q.image = f.target.result;
+                                    this.renderDialogQuestionEditPanel(sel);
+                                };
+                                reader.readAsDataURL(file);
+                            }
+                        };
+                        fileInput.click();
+                    }
+                }
+            };
+        }
+
+        const btnDlgQImgClear = document.getElementById('btn-dlg-q-img-clear');
+        if (btnDlgQImgClear) {
+            btnDlgQImgClear.onclick = () => {
+                const sel = this.app.editor.selected;
+                if (sel?.userData.type === 'Dialog') {
+                    const qIndex = this.activeQuestionIndex;
+                    const q = sel.userData.dialogQuestions?.[qIndex];
+                    if (q) {
+                        q.image = '';
+                        this.renderDialogQuestionEditPanel(sel);
+                    }
+                }
+            };
+        }
+
         document.getElementById('p-typology').onchange = (e) => {
             if (this.app.editor.selected?.userData.isPlayer) {
                 const player = this.app.editor.selected;
-                const oldType = player.userData.typology || 'platform';
+                const oldType = player.userData.typology || '8WAY';
                 const newType = e.target.value;
 
                 // 1. Save current actions to current typology slot
@@ -1168,6 +1876,9 @@ export class UIManager {
 
         const pDoubleJump = document.getElementById('p-doublejump');
         if (pDoubleJump) pDoubleJump.onchange = (e) => { if (this.app.editor.selected?.userData.isPlayer) this.app.editor.selected.userData.doubleJump = e.target.checked; };
+
+        const pCollisionMode = document.getElementById('p-collision-mode');
+        if (pCollisionMode) pCollisionMode.onchange = (e) => { if (this.app.editor.selected?.userData.isPlayer) this.app.editor.selected.userData.collisionMode = e.target.value; };
 
         // Sprint Settings Bindings
         const pSprintEnable = document.getElementById('p-sprint-enable');
@@ -1239,6 +1950,9 @@ export class UIManager {
             };
         };
 
+        bindProp('dlg-activation-mode', 'activationMode', 'Dialog');
+        bindProp('dlg-activation-key', 'activationKey', 'Dialog');
+
         // Generic Asset Loader
         const setupLoader = (btnId, type, prefix) => {
             const btn = document.getElementById(btnId);
@@ -1252,8 +1966,8 @@ export class UIManager {
                         reader.onload = (ev) => {
                             this.app.editor.selected.userData.glbFilename = file.name;
                             this.app.editor.loadGLB(ev.target.result, (m) => {
-                                this.generateThumbnail(m, `${prefix}-glb-preview-img`);
-                                document.getElementById(`${prefix}-glb-preview-container`).style.display = 'flex';
+                                this.generateThumbnail(m, (prefix) + "-glb-preview-img");
+                                document.getElementById((prefix) + "-glb-preview-container").style.display = 'flex';
                                 this.updateProperties();
                             });
                         };
@@ -1337,8 +2051,8 @@ export class UIManager {
         bindProp('e-f-stop-dist', 'followerStopDist', 'Enemy', parseFloat);
         bindProp('e-f-stop-col', 'followerStopCol', 'Enemy');
         ['x', 'y', 'z'].forEach(axis => {
-            bindProp(`e-f-t${axis}`, `followerTrans${axis.toUpperCase()}`, 'Enemy');
-            bindProp(`e-f-r${axis}`, `followerRot${axis.toUpperCase()}`, 'Enemy');
+            bindProp("e-f-t" + (axis), "followerTrans" + (axis.toUpperCase()), 'Enemy');
+            bindProp("e-f-r" + (axis), "followerRot" + (axis.toUpperCase()), 'Enemy');
         });
 
         setupLoader('btn-enemy-import', 'Enemy', 'e');
@@ -1426,7 +2140,7 @@ export class UIManager {
         bindProp('pu-offy', 'equipOffsetY', 'PowerUp', parseFloat);
         bindProp('pu-offz', 'equipOffsetZ', 'PowerUp', parseFloat);
         ['x', 'y', 'z'].forEach(axis => {
-            const el = document.getElementById(`pu-rot${axis}`);
+            const el = document.getElementById("pu-rot" + (axis));
             if (el) el.onchange = (e) => {
                 if (this.app.editor.selected?.userData.type === 'PowerUp') {
                     if (!this.app.editor.selected.userData.equipRotation) this.app.editor.selected.userData.equipRotation = [0, 0, 0];
@@ -1476,6 +2190,184 @@ export class UIManager {
         // Collision
         bindProp('col-action', 'actionType', 'Collision');
         bindProp('col-value', 'actionValue', 'Collision');
+        bindProp('col-value-select', 'actionValue', 'Collision');
+        bindProp('col-activation-mode', 'activationMode', 'Collision');
+        bindProp('col-activation-key', 'activationKey', 'Collision');
+        bindProp('col-show-hint', 'showHint', 'Collision');
+        bindProp('col-hint-distance', 'hintDistance', 'Collision', parseFloat);
+        bindProp('col-external-event', 'externalEvent', 'Collision');
+        bindProp('col-external-target', 'externalTarget', 'Collision');
+        bindProp('col-repeat-mode', 'repeatMode', 'Collision');
+        bindProp('col-repeat-count', 'repeatCount', 'Collision', parseInt);
+        bindProp('col-anim-loop-mode', 'animLoopMode', 'Collision');
+        bindProp('col-anim-play-count', 'animPlayCount', 'Collision', parseInt);
+
+        const colAction = document.getElementById('col-action');
+        if (colAction) {
+            colAction.addEventListener('change', () => {
+                this.updateProperties();
+            });
+        }
+
+        const colShowHint = document.getElementById('col-show-hint');
+        if (colShowHint) {
+            colShowHint.addEventListener('change', () => {
+                this.updateProperties();
+            });
+        }
+
+        // EmbedHTML Bindings
+        bindProp('eb-url', 'embedUrl', 'EmbedHTML');
+        bindProp('eb-activation-mode', 'activationMode', 'EmbedHTML');
+        bindProp('eb-activation-key', 'activationKey', 'EmbedHTML');
+        bindProp('eb-show-hint', 'showHint', 'EmbedHTML');
+        bindProp('eb-hint-distance', 'hintDistance', 'EmbedHTML', parseFloat);
+
+        const ebActivationMode = document.getElementById('eb-activation-mode');
+        if (ebActivationMode) {
+            ebActivationMode.addEventListener('change', () => this.updateProperties());
+        }
+        const ebShowHint = document.getElementById('eb-show-hint');
+        if (ebShowHint) {
+            ebShowHint.addEventListener('change', () => this.updateProperties());
+        }
+
+        // Objective Bindings
+        bindProp('obj-text', 'objectiveText', 'Objective');
+        bindProp('obj-action', 'actionType', 'Objective');
+        bindProp('obj-value', 'actionValue', 'Objective');
+        bindProp('obj-value-select', 'actionValue', 'Objective');
+        bindProp('obj-distance', 'triggerDistance', 'Objective', parseFloat);
+
+        const objAction = document.getElementById('obj-action');
+        if (objAction) {
+            objAction.addEventListener('change', () => this.updateProperties());
+        }
+
+        const btnAddObjTarget = document.getElementById('obj-add-target-btn');
+        if (btnAddObjTarget) {
+            btnAddObjTarget.onclick = () => {
+                const sel = this.app.editor.selected;
+                const input = document.getElementById('obj-target-input');
+                if (sel?.userData.type === 'Objective' && input.value) {
+                    if (!sel.userData.actionTargets) sel.userData.actionTargets = [];
+                    if (!sel.userData.actionTargets.includes(input.value)) {
+                        sel.userData.actionTargets.push(input.value);
+                        this.renderObjectiveTargets(sel);
+                        this.updateObjectiveAnimList(input.value);
+                        input.value = '';
+                    }
+                }
+            };
+        }
+
+        // CutScene Bindings
+        bindProp('cut-trigger-level-start', 'triggerOnLevelStart', 'CutScene');
+        bindProp('cut-trigger-collision', 'triggerOnCollision', 'CutScene');
+        bindProp('cut-skippable', 'skippable', 'CutScene');
+        bindProp('cut-skip-key', 'skipKey', 'CutScene');
+        bindProp('cut-appear-effect', 'appearEffect', 'CutScene');
+
+        const btnCutVideoLoad = document.getElementById('btn-cut-video-load');
+        if (btnCutVideoLoad) {
+            btnCutVideoLoad.onclick = () => {
+                const input = document.createElement('input');
+                input.type = 'file'; input.accept = 'video/*';
+                input.onchange = (e) => {
+                    const file = e.target.files[0];
+                    if (file && this.app.editor.selected?.userData.type === 'CutScene') {
+                        const reader = new FileReader();
+                        reader.onload = (ev) => {
+                            this.app.editor.selected.userData.videoSource = ev.target.result;
+                            this.app.editor.selected.userData.videoFilename = file.name;
+                            const filenameLabel = document.getElementById('cut-video-filename');
+                            if (filenameLabel) filenameLabel.textContent = file.name;
+                            const clearBtn = document.getElementById('btn-cut-video-clear');
+                            if (clearBtn) clearBtn.classList.remove('hidden');
+                        };
+                        reader.readAsDataURL(file);
+                    }
+                };
+                input.click();
+            };
+        }
+
+        const btnCutVideoClear = document.getElementById('btn-cut-video-clear');
+        if (btnCutVideoClear) {
+            btnCutVideoClear.onclick = () => {
+                const sel = this.app.editor.selected;
+                if (sel?.userData.type === 'CutScene') {
+                    sel.userData.videoSource = '';
+                    sel.userData.videoFilename = '';
+                    const filenameLabel = document.getElementById('cut-video-filename');
+                    if (filenameLabel) filenameLabel.textContent = '(Nessuno)';
+                    btnCutVideoClear.classList.add('hidden');
+                }
+            };
+        }
+        // SoundEffect Bindings
+        bindProp('sound-trigger-level-start', 'triggerOnLevelStart', 'SoundEffect');
+        bindProp('sound-trigger-collision', 'triggerOnCollision', 'SoundEffect');
+
+        const btnSoundAudioLoad = document.getElementById('btn-sound-audio-load');
+        if (btnSoundAudioLoad) {
+            btnSoundAudioLoad.onclick = () => {
+                const input = document.createElement('input');
+                input.type = 'file'; input.accept = 'audio/*';
+                input.onchange = (e) => {
+                    const file = e.target.files[0];
+                    if (file && this.app.editor.selected?.userData.type === 'SoundEffect') {
+                        const reader = new FileReader();
+                        reader.onload = (ev) => {
+                            this.app.editor.selected.userData.audioSource = ev.target.result;
+                            this.app.editor.selected.userData.audioFilename = file.name;
+                            const filenameLabel = document.getElementById('sound-audio-filename');
+                            if (filenameLabel) filenameLabel.textContent = file.name;
+                            const clearBtn = document.getElementById('btn-sound-audio-clear');
+                            if (clearBtn) clearBtn.classList.remove('hidden');
+                        };
+                        reader.readAsDataURL(file);
+                    }
+                };
+                input.click();
+            };
+        }
+
+        const btnSoundAudioClear = document.getElementById('btn-sound-audio-clear');
+        if (btnSoundAudioClear) {
+            btnSoundAudioClear.onclick = () => {
+                const sel = this.app.editor.selected;
+                if (sel?.userData.type === 'SoundEffect') {
+                    sel.userData.audioSource = '';
+                    sel.userData.audioFilename = '';
+                    const filenameLabel = document.getElementById('sound-audio-filename');
+                    if (filenameLabel) filenameLabel.textContent = '(Nessuno)';
+                    btnSoundAudioClear.classList.add('hidden');
+                }
+            };
+        }
+        const toggleColPanels = () => {
+            const actMode = document.getElementById('col-activation-mode')?.value;
+            const repMode = document.getElementById('col-repeat-mode')?.value;
+            const animMode = document.getElementById('col-anim-loop-mode')?.value;
+
+            const pKey = document.getElementById('panel-col-keypress');
+            if (pKey) pKey.classList.toggle('hidden', actMode !== 'keypress');
+
+            const pExt = document.getElementById('panel-col-external');
+            if (pExt) pExt.classList.toggle('hidden', actMode !== 'external');
+
+            const pRep = document.getElementById('panel-col-repeat-count');
+            if (pRep) pRep.classList.toggle('hidden', repMode !== 'count');
+
+            const pAnim = document.getElementById('panel-col-anim-count');
+            if (pAnim) pAnim.classList.toggle('hidden', animMode !== 'count');
+        };
+
+        ['col-activation-mode', 'col-repeat-mode', 'col-anim-loop-mode'].forEach(id => {
+            const el = document.getElementById(id);
+            if (el) el.addEventListener('change', toggleColPanels);
+        });
 
         const btnAddColTarget = document.getElementById('btn-col-add-target');
         if (btnAddColTarget) {
@@ -1494,6 +2386,7 @@ export class UIManager {
             };
         }
 
+        // col-oneshot has been deprecated in favor of col-repeat-mode, but keeping it bound for safety or removing
         bindProp('col-oneshot', 'oneShot', 'Collision');
 
         // Spawn
@@ -1590,12 +2483,12 @@ export class UIManager {
         };
 
         const updateShadowProp = (prop, parser, applyFn) => {
-            const el = document.getElementById(`l-shadow-${prop}`);
+            const el = document.getElementById("l-shadow-" + (prop));
             if (el) el.oninput = (e) => {
                 const sel = this.app.editor.selected;
                 if (sel && sel.userData.isAsset && ['PointLight', 'SpotLight', 'DirectionalLight'].includes(sel.userData.type)) {
                     const val = parser(e.target.value);
-                    sel.userData[`shadow${prop.charAt(0).toUpperCase() + prop.slice(1)}`] = val;
+                    sel.userData["shadow" + (prop.charAt(0).toUpperCase() + prop.slice(1))] = val;
                     const lightSource = sel.getObjectByName('light_source');
                     if (lightSource && lightSource.shadow) applyFn(lightSource.shadow, val);
                 }
@@ -1625,12 +2518,12 @@ export class UIManager {
         };
 
         const updateCamProp = (prop, parser, applyFn) => {
-            const el = document.getElementById(`l-shadow-${prop}`);
+            const el = document.getElementById("l-shadow-" + (prop));
             if (el) el.oninput = (e) => {
                 const sel = this.app.editor.selected;
                 if (sel && sel.userData.isAsset && ['PointLight', 'SpotLight', 'DirectionalLight'].includes(sel.userData.type)) {
                     const val = parser(e.target.value);
-                    sel.userData[`shadowCam${prop.charAt(0).toUpperCase() + prop.slice(1)}`] = val;
+                    sel.userData["shadowCam" + (prop.charAt(0).toUpperCase() + prop.slice(1))] = val;
                     const lightSource = sel.getObjectByName('light_source');
                     if (lightSource && lightSource.shadow && lightSource.shadow.camera) {
                         applyFn(lightSource.shadow.camera, val);
@@ -1664,20 +2557,32 @@ export class UIManager {
         setupLoader('btn-model-import', 'Model', 'm');
         setupModelEdit('btn-edit-m-modely', 'm-modely');
 
-        // Model Transparency
+        // Model Transparency & PBR
         const bindMaterialOpt = (id, key, parser = v => v) => {
             const el = document.getElementById(id);
-            if (el) el.onchange = (e) => {
-                if (this.app.editor.selected?.userData.type === 'Model') {
-                    this.app.editor.selected.userData[key] = parser(e.target.type === 'checkbox' ? e.target.checked : e.target.value);
-                    const m = this.app.editor.selected.getObjectByName('model');
-                    if (m) this.app.editor.updateMaterialSettings(m);
+            if (el) el.oninput = (e) => {
+                const selected = this.app.editor.selected;
+                const val = e.target.type === 'checkbox' ? e.target.checked : e.target.value;
+                if (selected) {
+                    selected.userData[key] = parser(val);
+                    this.app.editor.updateMaterialSettings(selected);
                 }
             };
         };
         bindMaterialOpt('m-alpha-mode', 'alphaMode');
         bindMaterialOpt('m-alpha-test', 'alphaTest', parseFloat);
         bindMaterialOpt('m-double-side', 'doubleSide');
+        bindMaterialOpt('m-material-color', 'materialColor');
+        bindMaterialOpt('m-material-metalness', 'materialMetalness', parseFloat);
+        bindMaterialOpt('m-material-roughness', 'materialRoughness', parseFloat);
+        bindMaterialOpt('m-material-specular', 'materialSpecular', parseFloat);
+        bindMaterialOpt('m-material-subsurface-scattering', 'materialSubsurfaceScattering', parseFloat);
+        bindMaterialOpt('m-material-clearcoat', 'materialClearcoat', parseFloat);
+        bindMaterialOpt('m-material-clearcoat-roughness', 'materialClearcoatRoughness', parseFloat);
+        bindMaterialOpt('m-material-transmission', 'materialTransmission', parseFloat);
+        bindMaterialOpt('m-material-thickness', 'materialThickness', parseFloat);
+        bindMaterialOpt('m-material-emissive', 'materialEmissive');
+        bindMaterialOpt('m-material-emissive-intensity', 'materialEmissiveIntensity', parseFloat);
 
         // Camera Bindings
         const cType = document.getElementById('c-type');
@@ -1728,37 +2633,164 @@ export class UIManager {
             const m = this.app.editor.selected?.getObjectByName('model');
             if (m) m.scale.setScalar(parseFloat(e.target.value));
         };
+
+        // Analyze model transform inputs
+        setupModelEdit('btn-edit-anz-modely', 'anz-modely');
+
+        const anzModelRot = document.getElementById('anz-model-roty');
+        if (anzModelRot) anzModelRot.oninput = (e) => {
+            const m = this.app.editor.selected?.getObjectByName('model');
+            if (m) m.rotation.y = THREE.MathUtils.degToRad(parseFloat(e.target.value));
+        };
+        const anzScaleX = document.getElementById('anz-model-scalex');
+        if (anzScaleX) anzScaleX.oninput = (e) => {
+            const m = this.app.editor.selected?.getObjectByName('model');
+            if (m) m.scale.x = parseFloat(e.target.value);
+        };
+        const anzScaleY = document.getElementById('anz-model-scaley');
+        if (anzScaleY) anzScaleY.oninput = (e) => {
+            const m = this.app.editor.selected?.getObjectByName('model');
+            if (m) m.scale.y = parseFloat(e.target.value);
+        };
+        const anzScaleZ = document.getElementById('anz-model-scalez');
+        if (anzScaleZ) anzScaleZ.oninput = (e) => {
+            const m = this.app.editor.selected?.getObjectByName('model');
+            if (m) m.scale.z = parseFloat(e.target.value);
+        };
     }
 
     update() { this.updateOutliner(); this.updateProperties(); }
 
-    updateOutliner() {
-        const list = document.getElementById('outliner-list'); list.innerHTML = '';
+    collapseAll() {
+        this.collapsedObjects.clear();
         this.app.editor.objects.forEach(o => {
-            const li = document.createElement('li'); li.className = 'outliner-item' + (this.app.editor.selected === o ? ' selected' : '');
-            let icon = '🧊';
-            if (o.userData.isPlayer) icon = '👤';
-            else if (o.userData.isCamera) icon = '📷';
-            else if (o.userData.type === 'Enemy') icon = '👿';
-            else if (o.userData.type === 'Bonus') icon = '⭐';
-            else if (o.userData.type === 'Boss') icon = '👹';
-            else if (o.userData.type === 'PowerUp') icon = '⚡';
-            else if (o.userData.type === 'Goal') icon = '🏆';
-            else if (o.userData.type === 'Spawn') icon = '🏁';
-            else if (o.userData.type === 'PointLight') icon = '💡';
-            else if (o.userData.type === 'SpotLight') icon = '🔦';
-            else if (o.userData.type === 'DirectionalLight') icon = '☀️';
-            else if (o.userData.type === 'SplatEnv') icon = '🌌';
+            this.collapsedObjects.add(o.uuid);
+            o.traverse(child => {
+                this.collapsedObjects.add(child.uuid);
+            });
+        });
+    }
 
-            li.innerText = `${icon} ${o.name}`;
-            li.onclick = () => this.app.editor.select(o); list.appendChild(li);
+    updateOutliner() {
+        const list = document.getElementById('outliner-list');
+        list.innerHTML = '';
+
+        const filterInput = document.getElementById('outliner-filter');
+        const filterText = filterInput ? filterInput.value.toLowerCase().trim() : '';
+
+        // Helper to check if a node or any child matches the filter
+        const matchesFilter = (node) => {
+            if (!filterText) return true;
+            const nameMatch = (node.name || '').toLowerCase().includes(filterText);
+            const typeMatch = (node.userData && node.userData.type || '').toLowerCase().includes(filterText);
+            if (nameMatch || typeMatch) return true;
+            if (node.children) {
+                return node.children.some(c => {
+                    if (c.userData && c.userData.isHelper) return false;
+                    if (c.name === 'TransformControlsGizmo') return false;
+                    return matchesFilter(c);
+                });
+            }
+            return false;
+        };
+        
+        const renderItem = (o, depth = 0) => {
+            if (!matchesFilter(o)) return;
+
+            const isSelected = this.app.editor.selectedObjects.includes(o) || this.app.editor.selected === o;
+            const li = document.createElement('li');
+            li.className = 'outliner-item' + (isSelected ? ' selected' : '');
+            li.style.paddingLeft = `${depth * 15 + 5}px`;
+            li.style.display = 'flex';
+            li.style.alignItems = 'center';
+            li.style.gap = '4px';
+            
+            let icon = '🧊';
+            if (depth === 0) {
+                if (o.userData.isPlayer) icon = '👤';
+                else if (o.userData.isCamera) icon = '🎥';
+                else if (o.userData.type === 'Enemy') icon = '👿';
+                else if (o.userData.type === 'Bonus') icon = '⭐';
+                else if (o.userData.type === 'Boss') icon = '👹';
+                else if (o.userData.type === 'PowerUp') icon = '⚡';
+                else if (o.userData.type === 'Goal') icon = '🏆';
+                else if (o.userData.type === 'Spawn') icon = '🏁';
+                else if (o.userData.type === 'PointLight') icon = '💡';
+                else if (o.userData.type === 'SpotLight') icon = '🔦';
+                else if (o.userData.type === 'DirectionalLight') icon = '☀️';
+                else if (o.userData.type === 'SplatEnv') icon = '🌌';
+                else if (o.userData.type === 'Collision') icon = '🚧';
+                else if (o.userData.type === 'Analyze') icon = '🔍';
+                else if (o.userData.type === 'Dialog') icon = '💬';
+                else if (o.userData.type === 'EmbedHTML') icon = '🌐';
+                else if (o.userData.type === 'CutScene') icon = '🎬';
+                else if (o.userData.type === 'SoundEffect') icon = '🔊';
+            } else {
+                icon = o.isMesh ? '📐' : '📁';
+            }
+            
+            const hasVisibleChildren = o.children && o.children.some(child => {
+                if (child.userData && child.userData.isHelper) return false;
+                if (child.name === 'TransformControlsGizmo') return false;
+                return true;
+            });
+
+            const caretSpan = document.createElement('span');
+            caretSpan.style.display = 'inline-block';
+            caretSpan.style.width = '12px';
+            caretSpan.style.cursor = 'pointer';
+            caretSpan.style.userSelect = 'none';
+            caretSpan.style.fontSize = '9px';
+            caretSpan.style.color = '#888';
+            
+            if (hasVisibleChildren) {
+                const isCollapsed = filterText ? false : this.collapsedObjects.has(o.uuid);
+                caretSpan.innerText = isCollapsed ? '▶' : '▼';
+                caretSpan.onclick = (e) => {
+                    e.stopPropagation();
+                    if (this.collapsedObjects.has(o.uuid)) {
+                        this.collapsedObjects.delete(o.uuid);
+                    } else {
+                        this.collapsedObjects.add(o.uuid);
+                    }
+                    this.updateOutliner();
+                };
+            } else {
+                caretSpan.innerHTML = '&nbsp;';
+            }
+            li.appendChild(caretSpan);
+ 
+            const contentSpan = document.createElement('span');
+            contentSpan.innerText = `${icon} ${o.name || 'Unnamed'}`;
+            contentSpan.style.cursor = 'pointer';
+            contentSpan.style.flex = '1';
+            contentSpan.onclick = (e) => {
+                e.stopPropagation();
+                this.app.editor.selectMulti(o, e.shiftKey, e.ctrlKey || e.metaKey);
+            };
+            li.appendChild(contentSpan);
+            
+            list.appendChild(li);
+            
+            const isCollapsed = filterText ? false : this.collapsedObjects.has(o.uuid);
+            if (o.children && o.children.length > 0 && !isCollapsed) {
+                o.children.forEach(child => {
+                    if (child.userData && child.userData.isHelper) return;
+                    if (child.name === 'TransformControlsGizmo') return;
+                    renderItem(child, depth + 1);
+                });
+            }
+        };
+
+        this.app.editor.objects.forEach(o => {
+            renderItem(o, 0);
         });
     }
 
     updateProperties() {
         const selected = this.app.editor.selected;
         // Hide all first
-        ['section-transform', 'section-player', 'section-camera', 'section-enemy', 'section-bonus', 'section-boss', 'section-powerup', 'section-spawn', 'section-goal', 'section-catcher', 'section-collision', 'section-model', 'section-splatenv', 'section-analyze', 'section-dialog'].forEach(id => {
+        ['section-transform', 'section-player', 'section-camera', 'section-enemy', 'section-bonus', 'section-boss', 'section-powerup', 'section-spawn', 'section-goal', 'section-catcher', 'section-collision', 'section-model', 'section-splatenv', 'section-analyze', 'section-dialog', 'section-embedhtml', 'section-cutscene', 'section-soundeffect', 'section-objective'].forEach(id => {
             const el = document.getElementById(id); if (el) el.classList.add('hidden');
         });
         // Show Game Settings and populate if game tab is active
@@ -1767,7 +2799,87 @@ export class UIManager {
             document.getElementById('game-title-input').value = this.app.editor.gameTitle || 'Web 3D Game';
             document.getElementById('game-subtitle-input').value = this.app.editor.gameSplashSubtitle || '3D Editor Engine';
             
+            const gameAmbientColor = document.getElementById('game-ambient-color');
+            if (gameAmbientColor) gameAmbientColor.value = this.app.editor.gameAmbientColor || '#ffffff';
 
+            const gameAmbientIntensity = document.getElementById('game-ambient-intensity');
+            if (gameAmbientIntensity) gameAmbientIntensity.value = this.app.editor.gameAmbientIntensity !== undefined ? this.app.editor.gameAmbientIntensity : 1.5;
+
+            const gamePbr = document.getElementById('game-pbr');
+            if (gamePbr) gamePbr.checked = this.app.editor.gamePbrActive !== false;
+
+            const gameShadows = document.getElementById('game-shadows');
+            if (gameShadows) gameShadows.checked = !!this.app.editor.gameShadows;
+
+            const gameReflections = document.getElementById('game-reflections');
+            if (gameReflections) gameReflections.checked = !!this.app.editor.gameReflections;
+
+            const gameExposure = document.getElementById('game-exposure');
+            if (gameExposure) gameExposure.value = this.app.editor.gameExposure !== undefined ? this.app.editor.gameExposure : 1.0;
+
+            const hdrIntensity = document.getElementById('hdr-intensity');
+            if (hdrIntensity) hdrIntensity.value = this.app.editor.gameSkyboxIntensity !== undefined ? this.app.editor.gameSkyboxIntensity : 1.0;
+
+            const hdrFilename = document.getElementById('hdr-filename');
+            if (hdrFilename) hdrFilename.textContent = this.app.editor.gameSkyboxFilename || '(Default Sky)';
+            const btnHdrClear = document.getElementById('btn-hdr-clear');
+            if (btnHdrClear) btnHdrClear.classList.toggle('hidden', !this.app.editor.gameSkybox);
+
+            // Fog, SSAO, SSR, Path Tracing
+            const sm = this.app.sceneManager;
+            if (sm) {
+                const fogTypeInput = document.getElementById('game-fog-type');
+                if (fogTypeInput) fogTypeInput.value = sm.fogType;
+                
+                const fogColorInput = document.getElementById('game-fog-color');
+                if (fogColorInput) fogColorInput.value = sm.fogColor;
+                
+                const fogDensityInput = document.getElementById('game-fog-density');
+                if (fogDensityInput) fogDensityInput.value = sm.fogDensity;
+                
+                const fogNearInput = document.getElementById('game-fog-near');
+                if (fogNearInput) fogNearInput.value = sm.fogNear;
+                
+                const fogFarInput = document.getElementById('game-fog-far');
+                if (fogFarInput) fogFarInput.value = sm.fogFar;
+
+                const rowDensity = document.getElementById('row-fog-density');
+                const rowNear = document.getElementById('row-fog-near');
+                const rowFar = document.getElementById('row-fog-far');
+                if (rowDensity) rowDensity.style.display = sm.fogType === 'exponential' ? 'flex' : 'none';
+                if (rowNear) rowNear.style.display = sm.fogType === 'linear' ? 'flex' : 'none';
+                if (rowFar) rowFar.style.display = sm.fogType === 'linear' ? 'flex' : 'none';
+
+                const ssaoEnableInput = document.getElementById('game-ssao-enable');
+                if (ssaoEnableInput) ssaoEnableInput.checked = sm.useSSAO;
+                
+                const ssaoRadiusInput = document.getElementById('game-ssao-radius');
+                if (ssaoRadiusInput) ssaoRadiusInput.value = sm.ssaoRadius !== undefined ? sm.ssaoRadius * 150.0 : 16;
+
+                const ssaoIntensityInput = document.getElementById('game-ssao-intensity');
+                if (ssaoIntensityInput) ssaoIntensityInput.value = sm.ssaoIntensity !== undefined ? sm.ssaoIntensity : 1.0;
+
+                const ssrEnableInput = document.getElementById('game-ssr-enable');
+                if (ssrEnableInput) ssrEnableInput.checked = sm.useSSR;
+
+                const ssrIntensityInput = document.getElementById('game-ssr-intensity');
+                if (ssrIntensityInput) ssrIntensityInput.value = sm.ssrIntensity !== undefined ? sm.ssrIntensity : 0.45;
+
+                const ptEnableInput = document.getElementById('game-pathtracing-enable');
+                if (ptEnableInput) ptEnableInput.checked = sm.usePathTracing;
+
+                const envVignetteInput = document.getElementById('env-vignette');
+                if (envVignetteInput) envVignetteInput.value = sm.vignetteStrength !== undefined ? sm.vignetteStrength : 1.0;
+
+                const bloomEnableInput = document.getElementById('game-bloom-effect') || document.getElementById('bloom-enable');
+                if (bloomEnableInput) bloomEnableInput.checked = !!sm.useBloom;
+
+                const bloomStrengthInput = document.getElementById('game-bloom-strength') || document.getElementById('bloom-strength');
+                if (bloomStrengthInput) bloomStrengthInput.value = sm.bloomIntensity !== undefined ? sm.bloomIntensity : 0.5;
+
+                const bloomRadiusInput = document.getElementById('game-bloom-radius') || document.getElementById('bloom-radius');
+                if (bloomRadiusInput) bloomRadiusInput.value = sm.bloomRadius !== undefined ? sm.bloomRadius : 0.4;
+            }
         }
 
         if (!selected && this._activePropTab !== 'game') {
@@ -1815,15 +2927,15 @@ export class UIManager {
         }
 
         if (this._activePropTab === 'game') {
-            this.setActivePropTab('transform');
+            this.setActivePropTab('object');
         }
 
         document.getElementById('section-transform').classList.remove('hidden');
         document.getElementById('obj-name-input').value = selected.name || '';
         ['x', 'y', 'z'].forEach(axis => {
-            const p = document.getElementById(`t-p${axis}`); if (p) p.value = selected.position[axis].toFixed(2);
-            const r = document.getElementById(`t-r${axis}`); if (r) r.value = THREE.MathUtils.radToDeg(selected.rotation[axis]).toFixed(0);
-            const s = document.getElementById(`t-s${axis}`); if (s) s.value = selected.scale[axis].toFixed(2);
+            const p = document.getElementById("t-p" + (axis)); if (p) p.value = selected.position[axis].toFixed(2);
+            const r = document.getElementById("t-r" + (axis)); if (r) r.value = THREE.MathUtils.radToDeg(selected.rotation[axis]).toFixed(0);
+            const s = document.getElementById("t-s" + (axis)); if (s) s.value = selected.scale[axis].toFixed(2);
         });
 
         if (selected.userData.isPlayer) {
@@ -1833,13 +2945,16 @@ export class UIManager {
             // Ideally should refresh inputs here too, but for brevity assuming static binding works for now or existing update logic was replaced?
             // Wait, I replaced 'setupInputs' and 'updateProperties'. The OLD updateProperties logic for Player is GONE if I don't re-include it.
             // I MUST re-include Player update logic.
-            const typology = selected.userData.typology || 'platform';
+            const typology = selected.userData.typology || '8WAY';
             document.getElementById('p-typology').value = typology;
             document.getElementById('panel-platform').classList.remove('hidden');
             document.getElementById('p-speed').value = selected.userData.speed || 0.4;
             document.getElementById('p-jump').value = (selected.userData.jumpForce || 12.0).toFixed(1);
             const dj = document.getElementById('p-doublejump');
             if (dj) dj.checked = !!selected.userData.doubleJump;
+
+            const cm = document.getElementById('p-collision-mode');
+            if (cm) cm.value = selected.userData.collisionMode || 'climb';
 
             const spe = document.getElementById('p-sprint-enable');
             const spk = document.getElementById('p-sprint-key');
@@ -1865,12 +2980,16 @@ export class UIManager {
         else if (selected.userData.isCamera) {
             this.setActivePropTab('object');
             document.getElementById('section-camera').classList.remove('hidden');
-            document.getElementById('c-type').value = selected.userData.type || 'TPS';
+            const validModes = ['TPS', 'FPS', 'SIMPLE', 'FIXED', '8WAY'];
+            if (!validModes.includes(selected.userData.type)) {
+                selected.userData.type = '8WAY';
+            }
+            document.getElementById('c-type').value = selected.userData.type;
             document.getElementById('c-fov').value = selected.userData.fov || 60;
         }
         else {
-            const type = selected.userData.type;
-            let sectionId = `section-${type.toLowerCase()}`;
+            const type = selected.userData.type || '';
+            let sectionId = "section-" + (type ? type.toLowerCase() : 'model');
             if (type === 'catcher_base') sectionId = 'section-catcher';
             if (['PointLight', 'SpotLight', 'DirectionalLight'].includes(type)) sectionId = 'section-light';
             if (type === 'SplatEnv') sectionId = 'section-splatenv';
@@ -1881,12 +3000,89 @@ export class UIManager {
                 el.classList.remove('hidden');
             }
 
+            // Popola campi CutScene
+            if (type === 'CutScene') {
+                document.getElementById('cut-trigger-level-start').checked = !!selected.userData.triggerOnLevelStart;
+                document.getElementById('cut-trigger-collision').checked = !!selected.userData.triggerOnCollision;
+                document.getElementById('cut-skippable').checked = !!selected.userData.skippable;
+                document.getElementById('cut-skip-key').value = selected.userData.skipKey || 'Escape';
+                document.getElementById('cut-appear-effect').value = selected.userData.appearEffect || 'immediate';
+                
+                const filenameLabel = document.getElementById('cut-video-filename');
+                if (filenameLabel) {
+                    filenameLabel.textContent = selected.userData.videoFilename || '(Nessuno)';
+                }
+                const clearBtn = document.getElementById('btn-cut-video-clear');
+                if (clearBtn) {
+                    clearBtn.classList.toggle('hidden', !selected.userData.videoSource);
+                }
+            }
+            // Popola campi SoundEffect
+            if (type === 'SoundEffect') {
+                document.getElementById('sound-trigger-level-start').checked = !!selected.userData.triggerOnLevelStart;
+                document.getElementById('sound-trigger-collision').checked = !!selected.userData.triggerOnCollision;
+                
+                const filenameLabel = document.getElementById('sound-audio-filename');
+                if (filenameLabel) {
+                    filenameLabel.textContent = selected.userData.audioFilename || '(Nessuno)';
+                }
+                const clearBtn = document.getElementById('btn-sound-audio-clear');
+                if (clearBtn) {
+                    clearBtn.classList.toggle('hidden', !selected.userData.audioSource);
+                }
+            }
+            // Popola campi EmbedHTML
+            if (type === 'EmbedHTML') {
+                document.getElementById('eb-url').value = selected.userData.embedUrl || 'https://example.com';
+                const actMode = selected.userData.activationMode || 'collision';
+                document.getElementById('eb-activation-mode').value = actMode;
+                document.getElementById('eb-activation-key').value = selected.userData.activationKey || 'e';
+                
+                const showHint = !!selected.userData.showHint;
+                document.getElementById('eb-show-hint').checked = showHint;
+
+                let defaultDist = '4.0';
+                if (selected.geometry) {
+                    selected.geometry.computeBoundingBox();
+                    const oBox = selected.geometry.boundingBox;
+                    const size = new THREE.Vector3();
+                    if (oBox) {
+                        oBox.getSize(size);
+                        const maxDim = Math.max(size.x, size.y, size.z);
+                        defaultDist = (maxDim / 2 + 3.0).toFixed(1);
+                    }
+                }
+                const ebHintDistance = document.getElementById('eb-hint-distance');
+                if (ebHintDistance) {
+                    ebHintDistance.value = selected.userData.hintDistance !== undefined ? selected.userData.hintDistance : '';
+                    ebHintDistance.placeholder = "Default (" + (defaultDist) + ")";
+                }
+
+                const pKey = document.getElementById('panel-eb-keypress');
+                if (pKey) pKey.classList.toggle('hidden', actMode !== 'keypress');
+
+                const hintDistRow = document.getElementById('eb-hint-dist-row');
+                if (hintDistRow) {
+                    hintDistRow.classList.toggle('hidden', !showHint || actMode !== 'keypress');
+                }
+            }
+
             // Popola campi Analyze
             if (type === 'Analyze') {
                 document.getElementById('anz-name').value = selected.userData.objectName || '';
                 document.getElementById('anz-desc').value = selected.userData.objectDescription || '';
                 document.getElementById('anz-key').value = selected.userData.activationKey || 'e';
                 document.getElementById('anz-touch').checked = !!selected.userData.activationTouch;
+                const showHintEl = document.getElementById('anz-show-hint');
+                if (showHintEl) showHintEl.checked = selected.userData.showHint !== false;
+                const hintDistEl = document.getElementById('anz-hint-dist');
+                if (hintDistEl) hintDistEl.value = selected.userData.hintDistance !== undefined ? selected.userData.hintDistance : 3.5;
+                const hintSizeEl = document.getElementById('anz-hint-size');
+                if (hintSizeEl) hintSizeEl.value = selected.userData.hintSize || 44;
+                const hintBgEl = document.getElementById('anz-hint-bgcolor');
+                if (hintBgEl) hintBgEl.value = selected.userData.hintBgColor || selected.userData.dialogAccentColor || '#33cccc';
+                const hintTextEl = document.getElementById('anz-hint-textcolor');
+                if (hintTextEl) hintTextEl.value = selected.userData.hintTextColor || '#000000';
                 
                 const model = selected.getObjectByName('model');
                 const filenameEl = document.getElementById('anz-filename');
@@ -1900,15 +3096,114 @@ export class UIManager {
                 } else {
                     if (container) container.style.display = 'none';
                 }
+
+                // Popola offset e rotazione modello per Analyze
+                const anzModely = document.getElementById('anz-modely');
+                const anzModelRoty = document.getElementById('anz-model-roty');
+                const anzScaleX = document.getElementById('anz-model-scalex');
+                const anzScaleY = document.getElementById('anz-model-scaley');
+                const anzScaleZ = document.getElementById('anz-model-scalez');
+
+                if (model) {
+                    if (anzModely) anzModely.value = model.position.y.toFixed(2);
+                    if (anzModelRoty) anzModelRoty.value = THREE.MathUtils.radToDeg(model.rotation.y).toFixed(0);
+                    if (anzScaleX) anzScaleX.value = model.scale.x.toFixed(2);
+                    if (anzScaleY) anzScaleY.value = model.scale.y.toFixed(2);
+                    if (anzScaleZ) anzScaleZ.value = model.scale.z.toFixed(2);
+                } else {
+                    if (anzModely) anzModely.value = 0;
+                    if (anzModelRoty) anzModelRoty.value = 0;
+                    if (anzScaleX) anzScaleX.value = 1;
+                    if (anzScaleY) anzScaleY.value = 1;
+                    if (anzScaleZ) anzScaleZ.value = 1;
+                }
             }
 
             // Popola campi Dialog
             if (type === 'Dialog') {
-                document.getElementById('dlg-question').value = selected.userData.dialogQuestion || '';
+                // Migrazione dati legacy: se manca l'array di domande, crealo basandoti sulla singola domanda legacy
+                if (!selected.userData.dialogQuestions || selected.userData.dialogQuestions.length === 0) {
+                    selected.userData.dialogQuestions = [
+                        {
+                            text: selected.userData.dialogQuestion || 'Scrivi qui la tua domanda...',
+                            image: '',
+                            answers: []
+                        }
+                    ];
+                }
+                
                 document.getElementById('dlg-bgcolor').value = selected.userData.dialogBgColor || '#19191e';
                 document.getElementById('dlg-textcolor').value = selected.userData.dialogTextColor || '#ffffff';
                 document.getElementById('dlg-accentcolor').value = selected.userData.dialogAccentColor || '#eb7b33';
                 document.getElementById('dlg-font').value = selected.userData.dialogFont || "'Segoe UI', sans-serif";
+                const actMode = selected.userData.activationMode || 'collision';
+                document.getElementById('dlg-activation-mode').value = actMode;
+                document.getElementById('dlg-activation-key').value = selected.userData.activationKey || '';
+                
+                const pKey = document.getElementById('panel-dlg-keypress');
+                if (pKey) pKey.classList.toggle('hidden', actMode !== 'keypress');
+
+                this.activeQuestionIndex = 0;
+                this.renderDialogQuestionsList(selected);
+                this.renderDialogQuestionEditPanel(selected);
+            }
+
+            if (type === 'Objective') {
+                const actionType = selected.userData.actionType || 'alert';
+                document.getElementById('obj-action').value = actionType;
+                document.getElementById('obj-text').value = selected.userData.objectiveText || 'Raggiungi';
+                document.getElementById('obj-value').value = selected.userData.actionValue || '';
+                document.getElementById('obj-distance').value = selected.userData.triggerDistance !== undefined ? selected.userData.triggerDistance : '';
+
+                const inputVal = document.getElementById('obj-value');
+                const selectVal = document.getElementById('obj-value-select');
+                const addTargetRow = document.getElementById('obj-add-target-row');
+                const targetsContainer = document.getElementById('obj-targets-container');
+
+                if (addTargetRow && targetsContainer) {
+                    if (actionType === 'load_level') {
+                        addTargetRow.style.display = 'none';
+                        targetsContainer.style.display = 'none';
+                    } else {
+                        addTargetRow.style.display = '';
+                        targetsContainer.style.display = '';
+                    }
+                }
+
+                if (inputVal && selectVal) {
+                    if (actionType === 'play_anim' || actionType === 'load_level') {
+                        inputVal.style.display = 'none';
+                        selectVal.style.display = '';
+                    } else {
+                        inputVal.style.display = '';
+                        selectVal.style.display = 'none';
+                    }
+                }
+
+                this.renderObjectiveTargets(selected);
+
+                if (actionType === 'load_level') {
+                    if (selectVal) {
+                        selectVal.innerHTML = '';
+                        const emptyOpt = document.createElement('option');
+                        emptyOpt.value = '';
+                        emptyOpt.innerText = '-- Seleziona Livello --';
+                        selectVal.appendChild(emptyOpt);
+                        this.app.editor.levels.forEach((lvl, idx) => {
+                            const opt = document.createElement('option');
+                            opt.value = idx;
+                            opt.innerText = (idx) + ": " + (lvl.name);
+                            if (selected.userData.actionValue == idx) opt.selected = true;
+                            selectVal.appendChild(opt);
+                        });
+                    }
+                } else if (actionType === 'play_anim') {
+                    if (selected.userData.actionTargets && selected.userData.actionTargets.length > 0) {
+                        this.updateObjectiveAnimList(selected.userData.actionTargets[0]);
+                    } else {
+                        this.updateObjectiveAnimList(null);
+                    }
+                }
             }
 
             const prefix = type === 'Enemy' ? 'e' : type === 'Bonus' ? 'b' : type === 'Boss' ? 'bs' : type === 'PowerUp' ? 'pu' : type === 'Spawn' ? 'sp' : type === 'Goal' ? 'g' : type === 'Collision' ? 'col' : (type === 'catcher_base' || type === 'Catcher') ? 'c' : type === 'Model' ? 'm' : type === 'SplatEnv' ? 'se' : '';
@@ -1916,17 +3211,17 @@ export class UIManager {
             // Common GLB & Model Y Logic
             if (prefix) {
                 const model = selected.getObjectByName('model');
-                const container = document.getElementById(`${prefix}-glb-preview-container`);
-                const filename = document.getElementById(`${prefix}-filename`);
-                const modely = document.getElementById(`${prefix}-modely`);
+                const container = document.getElementById((prefix) + "-glb-preview-container");
+                const filename = document.getElementById((prefix) + "-filename");
+                const modely = document.getElementById((prefix) + "-modely");
 
                 if (filename) filename.innerText = selected.userData.glbFilename || "(Default)";
                 if (modely && model) modely.value = model.position.y.toFixed(2);
 
                 if (model && selected.userData.glbSource) {
                     if (container) container.style.display = 'flex';
-                    const img = document.getElementById(`${prefix}-glb-preview-img`);
-                    if (img && (!img.src || img.style.display === 'none')) this.generateThumbnail(model, `${prefix}-glb-preview-img`);
+                    const img = document.getElementById((prefix) + "-glb-preview-img");
+                    if (img && (!img.src || img.style.display === 'none')) this.generateThumbnail(model, (prefix) + "-glb-preview-img");
 
                     if (type === 'Enemy') {
                         const rotY = document.getElementById('e-model-roty');
@@ -1956,7 +3251,7 @@ export class UIManager {
                 const animSelect = document.getElementById('m-anim-default');
                 if (animSelect) {
                     animSelect.innerHTML = '<option value="">-- None --</option>' +
-                        anims.map(a => `<option value="${a}" ${a === selected.userData.defaultAnim ? 'selected' : ''}>${a}</option>`).join('');
+                        anims.map(a => "<option value=\"" + (a) + "\" " + (a === selected.userData.defaultAnim ? 'selected' : '') + ">" + (a) + "</option>").join('');
                 }
 
                 // Transparency
@@ -1966,6 +3261,59 @@ export class UIManager {
                 if (at) at.value = selected.userData.alphaTest !== undefined ? selected.userData.alphaTest : 0.5;
                 const ds = document.getElementById('m-double-side');
                 if (ds) ds.checked = selected.userData.doubleSide !== undefined ? !!selected.userData.doubleSide : true;
+
+                // PBR Material inputs
+                let firstMeshMat = null;
+                selected.traverse((child) => {
+                    if (!firstMeshMat && child.isMesh && child.material) {
+                        firstMeshMat = Array.isArray(child.material) ? child.material[0] : child.material;
+                    }
+                });
+
+                const mColor = document.getElementById('m-material-color');
+                if (mColor) {
+                    mColor.value = selected.userData.materialColor || (firstMeshMat && firstMeshMat.color ? '#' + firstMeshMat.color.getHexString() : '#ffffff');
+                }
+                const mMet = document.getElementById('m-material-metalness');
+                if (mMet) {
+                    mMet.value = selected.userData.materialMetalness !== undefined ? selected.userData.materialMetalness : (firstMeshMat && firstMeshMat.metalness !== undefined ? firstMeshMat.metalness : 0.0);
+                }
+                const mRou = document.getElementById('m-material-roughness');
+                if (mRou) {
+                    mRou.value = selected.userData.materialRoughness !== undefined ? selected.userData.materialRoughness : (firstMeshMat && firstMeshMat.roughness !== undefined ? firstMeshMat.roughness : 1.0);
+                }
+                const mSpec = document.getElementById('m-material-specular');
+                if (mSpec) {
+                    mSpec.value = selected.userData.materialSpecular !== undefined ? selected.userData.materialSpecular : 0.5;
+                }
+                const mSub = document.getElementById('m-material-subsurface-scattering');
+                if (mSub) {
+                    mSub.value = selected.userData.materialSubsurfaceScattering !== undefined ? selected.userData.materialSubsurfaceScattering : 0.0;
+                }
+                const mCc = document.getElementById('m-material-clearcoat');
+                if (mCc) {
+                    mCc.value = selected.userData.materialClearcoat !== undefined ? selected.userData.materialClearcoat : 0.0;
+                }
+                const mCcr = document.getElementById('m-material-clearcoat-roughness');
+                if (mCcr) {
+                    mCcr.value = selected.userData.materialClearcoatRoughness !== undefined ? selected.userData.materialClearcoatRoughness : 0.0;
+                }
+                const mTr = document.getElementById('m-material-transmission');
+                if (mTr) {
+                    mTr.value = selected.userData.materialTransmission !== undefined ? selected.userData.materialTransmission : 0.0;
+                }
+                const mTh = document.getElementById('m-material-thickness');
+                if (mTh) {
+                    mTh.value = selected.userData.materialThickness !== undefined ? selected.userData.materialThickness : 0.0;
+                }
+                const mEm = document.getElementById('m-material-emissive');
+                if (mEm) {
+                    mEm.value = selected.userData.materialEmissive || (firstMeshMat && firstMeshMat.emissive ? '#' + firstMeshMat.emissive.getHexString() : '#000000');
+                }
+                const mEmi = document.getElementById('m-material-emissive-intensity');
+                if (mEmi) {
+                    mEmi.value = selected.userData.materialEmissiveIntensity !== undefined ? selected.userData.materialEmissiveIntensity : (firstMeshMat && firstMeshMat.emissiveIntensity !== undefined ? firstMeshMat.emissiveIntensity : 1.0);
+                }
             }
 
             else if (type === 'Enemy') {
@@ -2001,14 +3349,14 @@ export class UIManager {
                         document.getElementById('e-f-stop-col').checked = !!selected.userData.followerStopCol;
 
                         ['x', 'y', 'z'].forEach(axis => {
-                            const tKey = `followerTrans${axis.toUpperCase()}`;
+                            const tKey = "followerTrans" + (axis.toUpperCase());
                             const tVal = selected.userData[tKey];
-                            const t = document.getElementById(`e-f-t${axis}`);
+                            const t = document.getElementById("e-f-t" + (axis));
                             if (t) t.checked = tVal !== undefined ? tVal : true;
 
-                            const rKey = `followerRot${axis.toUpperCase()}`;
+                            const rKey = "followerRot" + (axis.toUpperCase());
                             const rVal = selected.userData[rKey];
-                            const r = document.getElementById(`e-f-r${axis}`);
+                            const r = document.getElementById("e-f-r" + (axis));
                             if (r) r.checked = rVal !== undefined ? rVal : true;
                         });
                     }
@@ -2026,7 +3374,7 @@ export class UIManager {
                 const populateAnim = (id, val) => {
                     const el = document.getElementById(id);
                     if (el) el.innerHTML = '<option value="">-- None --</option>' +
-                        anims.map(a => `<option value="${a}" ${a === val ? 'selected' : ''}>${a}</option>`).join('');
+                        anims.map(a => "<option value=\"" + (a) + "\" " + (a === val ? 'selected' : '') + ">" + (a) + "</option>").join('');
                 };
 
                 populateAnim('e-anim-idle', selected.userData.animIdle);
@@ -2048,7 +3396,7 @@ export class UIManager {
                 const populateBonusAnim = (id, val) => {
                     const el = document.getElementById(id);
                     if (el) el.innerHTML = '<option value="">-- None --</option>' +
-                        anims.map(a => `<option value="${a}" ${a === val ? 'selected' : ''}>${a}</option>`).join('');
+                        anims.map(a => "<option value=\"" + (a) + "\" " + (a === val ? 'selected' : '') + ">" + (a) + "</option>").join('');
                 };
 
                 populateBonusAnim('b-anim-idle', selected.userData.animIdle);
@@ -2097,12 +3445,12 @@ export class UIManager {
                 const animSelect = document.getElementById('pu-anim');
                 if (animSelect) {
                     animSelect.innerHTML = '<option value="">-- None --</option>' +
-                        anims.map(a => `<option value="${a}" ${a === selected.userData.defaultAnim ? 'selected' : ''}>${a}</option>`).join('');
+                        anims.map(a => "<option value=\"" + (a) + "\" " + (a === selected.userData.defaultAnim ? 'selected' : '') + ">" + (a) + "</option>").join('');
                 }
                 const equipSelect = document.getElementById('pu-equip-anim'); // Assuming equipSelect was defined elsewhere or is a typo for pu-equip-anim
                 if (equipSelect) {
                     equipSelect.innerHTML = '<option value="">-- None --</option>' +
-                        anims.map(a => `<option value="${a}" ${a === selected.userData.equipAnim ? 'selected' : ''}>${a}</option>`).join('');
+                        anims.map(a => "<option value=\"" + (a) + "\" " + (a === selected.userData.equipAnim ? 'selected' : '') + ">" + (a) + "</option>").join('');
                 }
 
                 // Get PLAYER animations for Fly Anim (since it plays on Player)
@@ -2119,20 +3467,171 @@ export class UIManager {
                 const flyAnimSelect = document.getElementById('pu-fly-anim');
                 if (flyAnimSelect) {
                     flyAnimSelect.innerHTML = '<option value="">-- None --</option>' +
-                        playerAnims.map(a => `<option value="${a}" ${a === selected.userData.flyAnim ? 'selected' : ''}>${a}</option>`).join('');
+                        playerAnims.map(a => "<option value=\"" + (a) + "\" " + (a === selected.userData.flyAnim ? 'selected' : '') + ">" + (a) + "</option>").join('');
                 }
                 const flyBoostInput = document.getElementById('pu-fly-boost');
                 if (flyBoostInput) flyBoostInput.value = selected.userData.flyBoost || 10.0;
             }
             else if (type === 'Collision') {
-                document.getElementById('col-action').value = selected.userData.actionType || 'restart';
+                const actionType = selected.userData.actionType || 'restart';
+                document.getElementById('col-action').value = actionType;
                 document.getElementById('col-value').value = selected.userData.actionValue || '';
+                
+                const inputVal = document.getElementById('col-value');
+                const selectVal = document.getElementById('col-value-select');
+                const addTargetRow = document.getElementById('col-add-target-row');
+                const targetsContainer = document.getElementById('col-targets-container');
+
+                if (addTargetRow && targetsContainer) {
+                    if (actionType === 'load_level' || actionType === 'play_cutscene' || actionType === 'play_soundeffect') {
+                        addTargetRow.style.display = 'none';
+                        targetsContainer.style.display = 'none';
+                    } else {
+                        addTargetRow.style.display = '';
+                        targetsContainer.style.display = '';
+                    }
+                }
+
+                if (inputVal && selectVal) {
+                    if (actionType === 'play_anim' || actionType === 'load_level' || actionType === 'play_cutscene' || actionType === 'play_soundeffect') {
+                        inputVal.style.display = 'none';
+                        selectVal.style.display = '';
+                    } else {
+                        inputVal.style.display = '';
+                        selectVal.style.display = 'none';
+                    }
+                }
+
+                // Carica nuove opzioni di attivazione e ripetizione
+                const actMode = selected.userData.activationMode || 'collision';
+                document.getElementById('col-activation-mode').value = actMode;
+                document.getElementById('col-activation-key').value = selected.userData.activationKey || '';
+                
+                const showHint = !!selected.userData.showHint;
+                document.getElementById('col-show-hint').checked = showHint;
+                
+                let defaultDist = '4.0';
+                if (selected.geometry) {
+                    selected.geometry.computeBoundingBox();
+                    const oBox = selected.geometry.boundingBox;
+                    const size = new THREE.Vector3();
+                    if (oBox) {
+                        oBox.getSize(size);
+                        const maxDim = Math.max(size.x, size.y, size.z);
+                        defaultDist = (maxDim / 2 + 3.0).toFixed(1);
+                    }
+                }
+                
+                const colHintDistance = document.getElementById('col-hint-distance');
+                if (colHintDistance) {
+                    colHintDistance.value = selected.userData.hintDistance !== undefined ? selected.userData.hintDistance : '';
+                    colHintDistance.placeholder = "Default (" + (defaultDist) + ")";
+                }
+                
+                const hintDistRow = document.getElementById('col-hint-dist-row');
+                if (hintDistRow) {
+                    hintDistRow.classList.toggle('hidden', !showHint || actMode !== 'keypress');
+                }
+                
+                document.getElementById('col-external-event').value = selected.userData.externalEvent || 'anim_end';
+                document.getElementById('col-external-target').value = selected.userData.externalTarget || '';
+
+                const repMode = selected.userData.repeatMode || (selected.userData.oneShot ? 'once' : 'always');
+                document.getElementById('col-repeat-mode').value = repMode;
+                document.getElementById('col-repeat-count').value = selected.userData.repeatCount !== undefined ? selected.userData.repeatCount : 1;
+
+                const animLoopMode = selected.userData.animLoopMode || 'loop';
+                document.getElementById('col-anim-loop-mode').value = animLoopMode;
+                document.getElementById('col-anim-play-count').value = selected.userData.animPlayCount !== undefined ? selected.userData.animPlayCount : 1;
+
+                // Mostra/Nascondi pannelli
+                const pKey = document.getElementById('panel-col-keypress');
+                if (pKey) pKey.classList.toggle('hidden', actMode !== 'keypress');
+
+                const pExt = document.getElementById('panel-col-external');
+                if (pExt) pExt.classList.toggle('hidden', actMode !== 'external');
+
+                const pRep = document.getElementById('panel-col-repeat-count');
+                if (pRep) pRep.classList.toggle('hidden', repMode !== 'count');
+
+                const pAnim = document.getElementById('panel-col-anim-count');
+                if (pAnim) pAnim.classList.toggle('hidden', animLoopMode !== 'count');
 
                 this.renderCollisionTargets(selected);
-                if (selected.userData.actionTargets?.length > 0) {
-                    this.updateCollisionAnimList(selected.userData.actionTargets[0]);
-                } else if (selected.userData.actionTarget) {
-                    this.updateCollisionAnimList(selected.userData.actionTarget);
+                
+                if (actionType === 'load_level') {
+                    if (selectVal) {
+                        selectVal.innerHTML = '';
+                        const emptyOpt = document.createElement('option');
+                        emptyOpt.value = '';
+                        emptyOpt.innerText = '-- Seleziona Livello --';
+                        selectVal.appendChild(emptyOpt);
+                        
+                        const levels = this.app.editor.levels || [];
+                        levels.forEach((lvl, idx) => {
+                            const opt = document.createElement('option');
+                            opt.value = idx;
+                            opt.innerText = (idx) + ": " + (lvl.name);
+                            if (selected.userData.actionValue == idx) {
+                                opt.selected = true;
+                            }
+                            selectVal.appendChild(opt);
+                        });
+                        selectVal.value = selected.userData.actionValue !== undefined ? selected.userData.actionValue : '';
+                    }
+                } else if (actionType === 'play_cutscene') {
+                    if (selectVal) {
+                        selectVal.innerHTML = '';
+                        const emptyOpt = document.createElement('option');
+                        emptyOpt.value = '';
+                        emptyOpt.innerText = '-- Seleziona Cutscene --';
+                        selectVal.appendChild(emptyOpt);
+                        
+                        this.app.editor.objects.forEach(o => {
+                            if (o.userData.type === 'CutScene') {
+                                const opt = document.createElement('option');
+                                opt.value = o.name;
+                                opt.innerText = o.name;
+                                if (selected.userData.actionValue === o.name) {
+                                    opt.selected = true;
+                                }
+                                selectVal.appendChild(opt);
+                            }
+                        });
+                        selectVal.value = selected.userData.actionValue !== undefined ? selected.userData.actionValue : '';
+                    }
+                } else if (actionType === 'play_soundeffect') {
+                    if (selectVal) {
+                        selectVal.innerHTML = '';
+                        const emptyOpt = document.createElement('option');
+                        emptyOpt.value = '';
+                        emptyOpt.innerText = '-- Seleziona Effetto Sonoro --';
+                        selectVal.appendChild(emptyOpt);
+                        
+                        this.app.editor.objects.forEach(o => {
+                            if (o.userData.type === 'SoundEffect') {
+                                const opt = document.createElement('option');
+                                opt.value = o.name;
+                                opt.innerText = o.name;
+                                if (selected.userData.actionValue === o.name) {
+                                    opt.selected = true;
+                                }
+                                selectVal.appendChild(opt);
+                            }
+                        });
+                        selectVal.value = selected.userData.actionValue !== undefined ? selected.userData.actionValue : '';
+                    }
+                } else {
+                    if (selected.userData.actionTargets?.length > 0) {
+                        this.updateCollisionAnimList(selected.userData.actionTargets[0]);
+                    } else if (selected.userData.actionTarget) {
+                        this.updateCollisionAnimList(selected.userData.actionTarget);
+                    } else {
+                        this.updateCollisionAnimList(null);
+                    }
+                    if (selectVal) {
+                        selectVal.value = selected.userData.actionValue || '';
+                    }
                 }
 
                 // Populate Datalist
@@ -2235,7 +3734,7 @@ export class UIManager {
             div.style.display = 'flex'; div.style.alignItems = 'center'; div.style.gap = '5px';
             div.style.background = '#222'; div.style.padding = '2px 5px'; div.style.borderRadius = '3px';
             div.style.fontSize = '10px';
-            div.innerHTML = `<span style="flex:1; color:#22ff22;">${t}</span><button class="btn-icon-small" data-idx="${i}" style="opacity:0.6;">🗑️</button>`;
+            div.innerHTML = "<span style=\"flex:1; color:#22ff22;\">" + (t) + "</span><button class=\"btn-icon-small\" data-idx=\"" + (i) + "\" style=\"opacity:0.6;\">🗑️</button>";
             div.querySelector('button').onclick = () => this.removeCollisionTarget(selected, i);
             container.appendChild(div);
         });
@@ -2248,24 +3747,83 @@ export class UIManager {
         }
     }
 
+    renderObjectiveTargets(selected) {
+        const container = document.getElementById('obj-targets-container');
+        if (!container) return;
+        container.innerHTML = '';
+        const targets = selected.userData.actionTargets || [];
+        targets.forEach((t, i) => {
+            const div = document.createElement('div');
+            div.style.display = 'flex'; div.style.alignItems = 'center'; div.style.gap = '5px';
+            div.style.background = '#222'; div.style.padding = '2px 5px'; div.style.borderRadius = '3px';
+            div.style.fontSize = '10px';
+            div.innerHTML = "<span style=\"flex:1; color:#ffcc00;\">" + (t) + "</span><button class=\"btn-icon-small\" data-idx=\"" + (i) + "\" style=\"opacity:0.6;\">🗑️</button>";
+            div.querySelector('button').onclick = () => this.removeObjectiveTarget(selected, i);
+            container.appendChild(div);
+        });
+    }
+
+    removeObjectiveTarget(selected, index) {
+        if (selected.userData.actionTargets) {
+            selected.userData.actionTargets.splice(index, 1);
+            this.renderObjectiveTargets(selected);
+        }
+    }
+
+    updateObjectiveAnimList(targetName) {
+        const list = document.getElementById('obj-value-list');
+        const select = document.getElementById('obj-value-select');
+        if (!list) return;
+        list.innerHTML = '';
+        if (select) {
+            select.innerHTML = '';
+            const emptyOpt = document.createElement('option');
+            emptyOpt.value = '';
+            emptyOpt.innerText = '-- Seleziona Animazione --';
+            select.appendChild(emptyOpt);
+        }
+        if (!targetName) return;
+
+        let target = this.app.editor.objects.find(o => o.name === targetName);
+        if (!target) {
+            target = this.app.editor.objects.find(o => o.userData.glbFilename === targetName);
+        }
+        if (!target) {
+            target = this.app.editor.objects.find(o => o.name && o.name.toLowerCase() === targetName.toLowerCase());
+        }
+        if (!target) {
+            target = this.app.editor.objects.find(o => o.name && o.name.includes(targetName));
+        }
+
+        if (target && target.userData.anims) {
+            const animations = target.userData.anims;
+            animations.forEach(anim => {
+                const opt = document.createElement('option');
+                opt.value = anim;
+                opt.innerText = anim;
+                list.appendChild(opt);
+
+                if (select) {
+                    const selOpt = document.createElement('option');
+                    selOpt.value = anim;
+                    selOpt.innerText = anim;
+                    if (this.app.editor.selected?.userData.actionValue === anim) selOpt.selected = true;
+                    select.appendChild(selOpt);
+                }
+            });
+        }
+    }
+
     renderActionList(playerObj) {
         const container = document.getElementById('action-list-container'); container.innerHTML = '';
         const actions = playerObj.userData.actions || [], anims = playerObj.userData.anims || [];
         actions.forEach((action, index) => {
             const item = document.createElement('div'); item.className = 'action-item'; if (action.active === false) item.style.opacity = '0.6';
             item.draggable = true; item.dataset.idx = index;
-            const animOptions = ['<option value="">No Anim</option>', ...anims.map(a => `<option value="${a}" ${a === action.anim ? 'selected' : ''}>${a}</option>`)].join('');
-            const typeOptions = this.actionTypes.map(t => `<option value="${t}" ${t === action.type ? 'selected' : ''}>${t}</option>`).join('');
+            const animOptions = ['<option value="">No Anim</option>', ...anims.map(a => "<option value=\"" + (a) + "\" " + (a === action.anim ? 'selected' : '') + ">" + (a) + "</option>")].join('');
+            const typeOptions = this.actionTypes.map(t => "<option value=\"" + (t) + "\" " + (t === action.type ? 'selected' : '') + ">" + (t) + "</option>").join('');
             const sfxFilename = action.sfxFilename || '';
-            item.innerHTML = `
-                <div class="action-header"><span style="font-size:12px; cursor:grab;">☰</span><input type="text" class="action-key-input" style="flex:1; margin:0 5px; font-weight:bold; color:#eb7b33;" value="${action.name || 'Action'}" data-idx="${index}" data-field="name"><div style="display:flex; align-items:center; gap:5px;"><input type="checkbox" class="action-checkbox" ${action.active !== false ? 'checked' : ''} data-idx="${index}" data-field="active"><button class="btn-icon-small" data-idx="${index}">🗑️</button></div></div>
-                <div class="action-row-inputs"><input type="text" class="action-key-input" placeholder="Key" value="${action.key}" data-idx="${index}" data-field="key"><select class="action-select" data-idx="${index}" data-field="type">${typeOptions}</select><select class="action-select" data-idx="${index}" data-field="anim">${animOptions}</select><input type="checkbox" class="action-checkbox" ${action.mirror ? 'checked' : ''} data-idx="${index}" data-field="mirror"></div>
-                <div style="display:flex; align-items:center; gap:5px; margin-top:4px;">
-                    <span style="font-size:10px; color:#888; flex-shrink:0;">🔊 SFX:</span>
-                    <span class="action-sfx-name" data-idx="${index}" style="flex:1; font-size:10px; color:#eb7b33; overflow:hidden; text-overflow:ellipsis; white-space:nowrap;">${sfxFilename || '(none)'}</span>
-                    <button class="level-btn-sm action-sfx-btn" data-idx="${index}">📁</button>
-                    <button class="level-btn-sm danger action-sfx-clear" data-idx="${index}" style="padding:2px 4px;">✕</button>
-                </div>`;
+            item.innerHTML = "\n                <div class=\"action-header\"><span style=\"font-size:12px; cursor:grab;\">☰</span><input type=\"text\" class=\"action-key-input\" style=\"flex:1; margin:0 5px; font-weight:bold; color:#eb7b33;\" value=\"" + (action.name || 'Action') + "\" data-idx=\"" + (index) + "\" data-field=\"name\"><div style=\"display:flex; align-items:center; gap:5px;\"><input type=\"checkbox\" class=\"action-checkbox\" " + (action.active !== false ? 'checked' : '') + " data-idx=\"" + (index) + "\" data-field=\"active\"><button class=\"btn-icon-small\" data-idx=\"" + (index) + "\">🗑️</button></div></div>\n                <div class=\"action-row-inputs\"><input type=\"text\" class=\"action-key-input\" placeholder=\"Key\" value=\"" + (action.key) + "\" data-idx=\"" + (index) + "\" data-field=\"key\"><select class=\"action-select\" data-idx=\"" + (index) + "\" data-field=\"type\">" + (typeOptions) + "</select><select class=\"action-select\" data-idx=\"" + (index) + "\" data-field=\"anim\">" + (animOptions) + "</select><input type=\"checkbox\" class=\"action-checkbox\" " + (action.mirror ? 'checked' : '') + " data-idx=\"" + (index) + "\" data-field=\"mirror\"></div>\n                <div style=\"display:flex; align-items:center; gap:5px; margin-top:4px;\">\n                    <span style=\"font-size:10px; color:#888; flex-shrink:0;\">🔊 SFX:</span>\n                    <span class=\"action-sfx-name\" data-idx=\"" + (index) + "\" style=\"flex:1; font-size:10px; color:#eb7b33; overflow:hidden; text-overflow:ellipsis; white-space:nowrap;\">" + (sfxFilename || '(none)') + "</span>\n                    <button class=\"level-btn-sm action-sfx-btn\" data-idx=\"" + (index) + "\">📁</button>\n                    <button class=\"level-btn-sm danger action-sfx-clear\" data-idx=\"" + (index) + "\" style=\"padding:2px 4px;\">✕</button>\n                </div>";
             item.addEventListener('dragstart', (e) => { e.dataTransfer.setData('text/plain', index); item.classList.add('dragging'); });
             item.addEventListener('dragend', () => item.classList.remove('dragging'));
             item.addEventListener('dragover', (e) => { e.preventDefault(); const draggingItem = container.querySelector('.dragging'); if (draggingItem !== item) { const rect = item.getBoundingClientRect(); if (e.clientY - rect.top - rect.height / 2 < 0) container.insertBefore(draggingItem, item); else container.insertBefore(draggingItem, item.nextSibling); } });
@@ -2316,30 +3874,95 @@ export class UIManager {
 
     updateCollisionAnimList(targetName) {
         const list = document.getElementById('col-value-list');
+        const select = document.getElementById('col-value-select');
         if (!list) return;
         list.innerHTML = '';
+        if (select) {
+            select.innerHTML = '';
+            const emptyOpt = document.createElement('option');
+            emptyOpt.value = '';
+            emptyOpt.innerText = '-- Seleziona Animazione --';
+            select.appendChild(emptyOpt);
+        }
         if (!targetName) return;
 
-        const target = this.app.editor.objects.find(o => o.name === targetName);
-        if (!target) return;
-
-        let anims = target.userData.anims || [];
-        if (anims.length === 0) {
-            const model = target.getObjectByName('model');
-            if (model && model.animations) {
-                anims = model.animations.map(c => c.name);
+        // Cerca l'oggetto target in modo estremamente flessibile
+        let target = this.app.editor.objects.find(o => o.name === targetName);
+        if (!target) {
+            target = this.app.editor.objects.find(o => o.userData.glbFilename === targetName);
+        }
+        if (!target) {
+            // Cerca case-insensitive
+            target = this.app.editor.objects.find(o => o.name && o.name.toLowerCase() === targetName.toLowerCase());
+        }
+        if (!target) {
+            // Cerca se contiene il nome
+            target = this.app.editor.objects.find(o => o.name && o.name.includes(targetName));
+        }
+        if (!target) {
+            // Se targetName è il nome di un asset della libreria (es. "ps1_scene.glb"),
+            // trova l'oggetto nella scena che ha lo stesso glbSource di quell'asset
+            const libItem = this.library.find(item => item.name === targetName);
+            if (libItem && libItem.data) {
+                const getB64 = (s) => {
+                    if (!s || typeof s !== 'string') return '';
+                    const idx = s.indexOf(',');
+                    return idx !== -1 ? s.substring(idx + 1) : s;
+                };
+                const libB64 = getB64(libItem.data);
+                target = this.app.editor.objects.find(o => o.userData.type === 'Model' && getB64(o.userData.glbSource) === libB64);
             }
         }
+
+        if (!target) return;
+
+        // Recupera le animazioni da tutte le fonti possibili dell'oggetto target
+        let anims = [];
+        if (target.userData.anims && target.userData.anims.length > 0) {
+            anims = [...target.userData.anims];
+        }
+        
+        if (anims.length === 0 && target.animations && target.animations.length > 0) {
+            anims = target.animations.map(c => c.name);
+        }
+
+        if (anims.length === 0) {
+            const model = target.getObjectByName('model');
+            if (model) {
+                if (model.animations && model.animations.length > 0) {
+                    anims = model.animations.map(c => c.name);
+                } else if (model.parent && model.parent.animations && model.parent.animations.length > 0) {
+                    anims = model.parent.animations.map(c => c.name);
+                }
+            }
+        }
+
         if (target.userData.isPlayer && target.userData.actions) {
             const actionAnims = target.userData.actions.map(a => a.anim).filter(a => a);
             anims = [...new Set([...anims, ...actionAnims])];
         }
 
+        // Rimuovi duplicati
+        anims = [...new Set(anims)];
+
         anims.forEach(anim => {
             const opt = document.createElement('option');
             opt.value = anim;
             list.appendChild(opt);
+
+            if (select) {
+                const sOpt = document.createElement('option');
+                sOpt.value = anim;
+                sOpt.innerText = anim;
+                select.appendChild(sOpt);
+            }
         });
+
+        // Ripristina valore attivo se Collision selezionato
+        const selected = this.app.editor.selected;
+        if (selected?.userData.type === 'Collision' && select) {
+            select.value = selected.userData.actionValue || '';
+        }
     }
 
     generateThumbnail(model, targetImgId = 'glb-preview-img') {
@@ -2453,7 +4076,7 @@ export class UIManager {
         const btnAdd = document.getElementById('btn-add-level');
         if (btnAdd) {
             btnAdd.onclick = () => {
-                const name = `Level ${this.app.editor.levels.length + 1}`;
+                const name = "Level " + (this.app.editor.levels.length + 1);
                 this.app.editor.saveCurrentAsLevel(name);
             };
         }
@@ -2464,7 +4087,7 @@ export class UIManager {
             btnImport.onclick = () => {
                 const input = document.createElement('input');
                 input.type = 'file';
-                input.accept = '.json';
+                input.accept = '.json,.wscene';
                 input.onchange = (e) => {
                     const file = e.target.files[0];
                     if (file) {
@@ -2495,15 +4118,7 @@ export class UIManager {
 
             const div = document.createElement('div');
             div.className = 'level-list-item';
-            div.innerHTML = `
-                <span class="level-name ${isActive ? 'active-level' : ''}" title="Doppio click per rinominare — Index: ${index}">${index}: ${level.name}</span>
-                <button class="level-btn-sm lv-start" data-idx="${index}" title="Imposta come livello iniziale">${isStarting ? '⭐' : '☆'}</button>
-                <button class="level-btn-sm lv-play" data-idx="${index}" title="Testa questo livello">▶️</button>
-                <button class="level-btn-sm lv-load" data-idx="${index}" title="Carica nel editor (auto-salva il livello corrente)">📂</button>
-                <button class="level-btn-sm lv-update" data-idx="${index}" title="Aggiorna con scena corrente">💾</button>
-                <button class="level-btn-sm lv-music" data-idx="${index}" title="${musicName || 'Scegli musica BGM'}">🎵</button>
-                <button class="level-btn-sm danger lv-delete" data-idx="${index}" title="Cancella">🗑️</button>
-            `;
+            div.innerHTML = "\n                <span class=\"level-name " + (isActive ? 'active-level' : '') + "\" title=\"Doppio click per rinominare — Index: " + (index) + "\">" + (index) + ": " + (level.name) + "</span>\n                <button class=\"level-btn-sm lv-start\" data-idx=\"" + (index) + "\" title=\"Imposta come livello iniziale\">" + (isStarting ? '⭐' : '☆') + "</button>\n                <button class=\"level-btn-sm lv-play\" data-idx=\"" + (index) + "\" title=\"Testa questo livello\">▶️</button>\n                <button class=\"level-btn-sm lv-load\" data-idx=\"" + (index) + "\" title=\"Carica nel editor (auto-salva il livello corrente)\">📂</button>\n                <button class=\"level-btn-sm lv-update\" data-idx=\"" + (index) + "\" title=\"Salva scena corrente\">💾</button>\n                <button class=\"level-btn-sm lv-music\" data-idx=\"" + (index) + "\" title=\"" + (musicName || 'Scegli musica BGM') + "\">🎵</button>\n                <button class=\"level-btn-sm danger lv-delete\" data-idx=\"" + (index) + "\" title=\"Cancella\">🗑️</button>\n            ";
 
             div.querySelector('.lv-start').onclick = () => {
                 this.app.editor.startingLevelIndex = index;
@@ -2548,7 +4163,7 @@ export class UIManager {
                 input.click();
             };
             div.querySelector('.lv-delete').onclick = () => {
-                if (confirm(`Cancellare "${level.name}"?`)) {
+                if (confirm("Cancellare \"" + (level.name) + "\"?")) {
                     this.app.editor.levels.splice(index, 1);
                     if (this.app.editor.currentLevelIndex >= this.app.editor.levels.length) {
                         this.app.editor.currentLevelIndex = -1;
@@ -2588,5 +4203,336 @@ export class UIManager {
                 container.appendChild(ml);
             }
         });
+    }
+
+    _injectModalStyles() {
+        if (!document.getElementById('dyn-modal-styles')) {
+            const styles = document.createElement('style');
+            styles.id = 'dyn-modal-styles';
+            styles.innerHTML = "\n                @keyframes fadeIn { from { opacity: 0; } to { opacity: 1; } }\n                @keyframes fadeOut { from { opacity: 1; } to { opacity: 0; } }\n                @keyframes scaleUp { from { transform: scale(0.9); opacity: 0; } to { transform: scale(1); opacity: 1; } }\n                @keyframes scaleDown { from { transform: scale(1); opacity: 1; } to { transform: scale(0.9); opacity: 0; } }\n            ";
+            document.head.appendChild(styles);
+        }
+    }
+
+    showToast(message, duration = 2000) {
+        const existing = document.getElementById('toast-notification');
+        if (existing) existing.remove();
+
+        const toast = document.createElement('div');
+        toast.id = 'toast-notification';
+        toast.style.cssText = "\n            position: fixed;\n            bottom: 30px;\n            left: 50%;\n            transform: translateX(-50%) translateY(20px);\n            background: rgba(25, 25, 30, 0.95);\n            color: #fff;\n            border: 2px solid #eb7b33;\n            border-radius: 50px;\n            padding: 12px 30px;\n            font-size: 14px;\n            font-weight: bold;\n            box-shadow: 0 10px 25px rgba(0,0,0,0.5);\n            z-index: 100000;\n            opacity: 0;\n            transition: all 0.3s cubic-bezier(0.175, 0.885, 0.32, 1.275);\n            pointer-events: none;\n            display: flex;\n            align-items: center;\n            gap: 8px;\n        ";
+        toast.innerText = message;
+        document.body.appendChild(toast);
+
+        toast.offsetHeight; // force reflow
+
+        toast.style.opacity = '1';
+        toast.style.transform = 'translateX(-50%) translateY(0)';
+
+        setTimeout(() => {
+            toast.style.opacity = '0';
+            toast.style.transform = 'translateX(-50%) translateY(-20px)';
+            setTimeout(() => {
+                if (toast.parentNode) toast.parentNode.removeChild(toast);
+            }, 300);
+        }, duration);
+    }
+
+    showModalAlert(title, message) {
+        this._injectModalStyles();
+        const existing = document.getElementById('dyn-modal-alert');
+        if (existing) existing.remove();
+
+        const modal = document.createElement('div');
+        modal.id = 'dyn-modal-alert';
+        modal.style.cssText = "\n            position: fixed;\n            inset: 0;\n            z-index: 99999;\n            background: rgba(0, 0, 0, 0.7);\n            backdrop-filter: blur(8px);\n            display: flex;\n            align-items: center;\n            justify-content: center;\n            animation: fadeIn 0.2s ease-out;\n        ";
+
+        const card = document.createElement('div');
+        card.style.cssText = "\n            background: #1e1e24;\n            border: 1px solid rgba(255, 255, 255, 0.1);\n            border-radius: 12px;\n            width: 90%;\n            max-width: 400px;\n            padding: 24px;\n            box-shadow: 0 20px 25px -5px rgba(0, 0, 0, 0.5);\n            transform: scale(0.9);\n            animation: scaleUp 0.2s cubic-bezier(0.34, 1.56, 0.64, 1) forwards;\n            font-family: system-ui, -apple-system, sans-serif;\n            color: #fff;\n        ";
+
+        card.innerHTML = "\n            <div style=\"font-size: 16px; font-weight: 700; margin-bottom: 12px; color: #eb7b33; display: flex; align-items: center; gap: 8px;\">\n                " + (title) + "\n            </div>\n            <div style=\"font-size: 13px; line-height: 1.6; color: #ccc; margin-bottom: 24px; white-space: pre-wrap;\">\n                " + (message) + "\n            </div>\n            <div style=\"display: flex; justify-content: flex-end;\">\n                <button id=\"btn-alert-ok\" style=\"\n                    background: #eb7b33;\n                    color: #fff;\n                    border: none;\n                    padding: 8px 20px;\n                    font-size: 13px;\n                    font-weight: 600;\n                    border-radius: 6px;\n                    cursor: pointer;\n                    transition: background 0.15s;\n                \">OK</button>\n            </div>\n        ";
+
+        modal.appendChild(card);
+        document.body.appendChild(modal);
+
+        const btn = card.querySelector('#btn-alert-ok');
+        btn.focus();
+        btn.onmouseover = () => btn.style.background = '#f98d48';
+        btn.onmouseout = () => btn.style.background = '#eb7b33';
+
+        const closeAlert = () => {
+            modal.style.animation = 'fadeOut 0.15s ease-in forwards';
+            card.style.animation = 'scaleDown 0.15s ease-in forwards';
+            setTimeout(() => modal.remove(), 150);
+            window.removeEventListener('keydown', onKeyDown);
+        };
+
+        btn.onclick = closeAlert;
+
+        const onKeyDown = (e) => {
+            if (e.key === 'Enter' || e.key === 'Escape' || e.key === ' ') {
+                e.preventDefault();
+                closeAlert();
+            }
+        };
+        window.addEventListener('keydown', onKeyDown);
+    }
+
+    showModalPrompt(title, label, defaultValue, callback) {
+        this._injectModalStyles();
+        const existing = document.getElementById('dyn-modal-prompt');
+        if (existing) existing.remove();
+
+        const modal = document.createElement('div');
+        modal.id = 'dyn-modal-prompt';
+        modal.style.cssText = "\n            position: fixed;\n            inset: 0;\n            z-index: 99999;\n            background: rgba(0, 0, 0, 0.7);\n            backdrop-filter: blur(8px);\n            display: flex;\n            align-items: center;\n            justify-content: center;\n            animation: fadeIn 0.2s ease-out;\n        ";
+
+        const card = document.createElement('div');
+        card.style.cssText = "\n            background: #1e1e24;\n            border: 1px solid rgba(255, 255, 255, 0.1);\n            border-radius: 12px;\n            width: 90%;\n            max-width: 400px;\n            padding: 24px;\n            box-shadow: 0 20px 25px -5px rgba(0, 0, 0, 0.5);\n            transform: scale(0.9);\n            animation: scaleUp 0.2s cubic-bezier(0.34, 1.56, 0.64, 1) forwards;\n            font-family: system-ui, -apple-system, sans-serif;\n            color: #fff;\n        ";
+
+        card.innerHTML = "\n            <div style=\"font-size: 16px; font-weight: 700; margin-bottom: 12px; color: #eb7b33;\">\n                " + (title) + "\n            </div>\n            <div style=\"font-size: 13px; color: #bbb; margin-bottom: 8px;\">\n                " + (label) + "\n            </div>\n            <input type=\"text\" id=\"prompt-input\" value=\"" + (defaultValue || '') + "\" style=\"\n                width: 100%;\n                background: #111;\n                border: 1px solid #444;\n                border-radius: 6px;\n                padding: 8px 12px;\n                color: #fff;\n                font-size: 13px;\n                margin-bottom: 24px;\n                box-sizing: border-box;\n                outline: none;\n            \">\n            <div style=\"display: flex; justify-content: flex-end; gap: 10px;\">\n                <button id=\"btn-prompt-cancel\" style=\"\n                    background: transparent;\n                    color: #aaa;\n                    border: 1px solid #444;\n                    padding: 8px 16px;\n                    font-size: 13px;\n                    font-weight: 600;\n                    border-radius: 6px;\n                    cursor: pointer;\n                    transition: color 0.15s;\n                \">Annulla</button>\n                <button id=\"btn-prompt-submit\" style=\"\n                    background: #eb7b33;\n                    color: #fff;\n                    border: none;\n                    padding: 8px 20px;\n                    font-size: 13px;\n                    font-weight: 600;\n                    border-radius: 6px;\n                    cursor: pointer;\n                    transition: background 0.15s;\n                \">Conferma</button>\n            </div>\n        ";
+
+        modal.appendChild(card);
+        document.body.appendChild(modal);
+
+        const input = card.querySelector('#prompt-input');
+        const btnCancel = card.querySelector('#btn-prompt-cancel');
+        const btnSubmit = card.querySelector('#btn-prompt-submit');
+
+        input.focus();
+        input.select();
+        input.style.border = '1px solid #eb7b33';
+
+        const closePrompt = () => {
+            modal.style.animation = 'fadeOut 0.15s ease-in forwards';
+            card.style.animation = 'scaleDown 0.15s ease-in forwards';
+            setTimeout(() => modal.remove(), 150);
+            window.removeEventListener('keydown', onKeyDown);
+        };
+
+        const submit = () => {
+            const val = input.value.trim();
+            if (callback) callback(val);
+            closePrompt();
+        };
+
+        btnCancel.onclick = closePrompt;
+        btnSubmit.onclick = submit;
+
+        btnSubmit.onmouseover = () => btnSubmit.style.background = '#f98d48';
+        btnSubmit.onmouseout = () => btnSubmit.style.background = '#eb7b33';
+        btnCancel.onmouseover = () => btnCancel.style.color = '#fff';
+        btnCancel.onmouseout = () => btnCancel.style.color = '#aaa';
+
+        const onKeyDown = (e) => {
+            if (e.key === 'Enter') {
+                e.preventDefault();
+                submit();
+            } else if (e.key === 'Escape') {
+                e.preventDefault();
+                closePrompt();
+            }
+        };
+        window.addEventListener('keydown', onKeyDown);
+    }
+
+    renderDialogQuestionsList(selected) {
+        const container = document.getElementById('dlg-questions-list');
+        if (!container) return;
+        container.innerHTML = '';
+        const questions = selected.userData.dialogQuestions || [];
+
+        questions.forEach((q, i) => {
+            const div = document.createElement('div');
+            div.style.cssText = "\n                display: flex;\n                align-items: center;\n                gap: 5px;\n                background: " + (this.activeQuestionIndex === i ? '#4422aa' : '#222') + ";\n                padding: 4px 6px;\n                border-radius: 4px;\n                font-size: 11px;\n                cursor: pointer;\n                border: 1px solid " + (this.activeQuestionIndex === i ? '#7733cc' : '#444') + ";\n            ";
+            div.onclick = () => {
+                this.activeQuestionIndex = i;
+                this.renderDialogQuestionsList(selected);
+                this.renderDialogQuestionEditPanel(selected);
+            };
+
+            const label = document.createElement('span');
+            label.style.flex = '1';
+            label.style.overflow = 'hidden';
+            label.style.textOverflow = 'ellipsis';
+            label.style.whiteSpace = 'nowrap';
+            label.innerText = (i + 1) + ". " + (q.text || '(Vuota)');
+            div.appendChild(label);
+
+            const btnDel = document.createElement('button');
+            btnDel.className = 'btn-icon-small';
+            btnDel.innerHTML = '🗑️';
+            btnDel.style.padding = '1px 3px';
+            btnDel.onclick = (e) => {
+                e.stopPropagation();
+                questions.splice(i, 1);
+                if (this.activeQuestionIndex >= questions.length) {
+                    this.activeQuestionIndex = Math.max(0, questions.length - 1);
+                }
+                this.renderDialogQuestionsList(selected);
+                this.renderDialogQuestionEditPanel(selected);
+            };
+            div.appendChild(btnDel);
+            container.appendChild(div);
+        });
+    }
+
+    renderDialogQuestionEditPanel(selected) {
+        const panel = document.getElementById('dlg-q-edit-panel');
+        if (!panel) return;
+        const questions = selected.userData.dialogQuestions || [];
+        const qIndex = this.activeQuestionIndex;
+        if (qIndex < 0 || qIndex >= questions.length) {
+            panel.classList.add('hidden');
+            return;
+        }
+        panel.classList.remove('hidden');
+        const q = questions[qIndex];
+
+        // Textarea
+        const textInput = document.getElementById('dlg-q-text');
+        if (textInput) {
+            textInput.value = q.text || '';
+            textInput.oninput = (e) => {
+                q.text = e.target.value;
+                this.renderDialogQuestionsList(selected);
+            };
+        }
+
+        // Image Preview and Handlers
+        const previewCont = document.getElementById('dlg-q-img-preview-container');
+        const preview = document.getElementById('dlg-q-img-preview');
+        if (q.image) {
+            if (previewCont) previewCont.classList.remove('hidden');
+            if (preview) preview.src = q.image;
+        } else {
+            if (previewCont) previewCont.classList.add('hidden');
+            if (preview) preview.src = '';
+        }
+
+        // Answer list
+        this.renderDialogAnswersList(selected, q);
+    }
+
+    renderDialogAnswersList(selected, q) {
+        const container = document.getElementById('dlg-answers-list');
+        if (!container) return;
+        container.innerHTML = '';
+        const answers = q.answers || [];
+
+        answers.forEach((ans, idx) => {
+            const div = document.createElement('div');
+            div.style.cssText = "\n                display: flex;\n                flex-direction: column;\n                gap: 4px;\n                background: rgba(0,0,0,0.2);\n                border: 1px solid #444;\n                border-radius: 4px;\n                padding: 6px;\n            ";
+
+            // Row 1: Answer Text and Delete button
+            const r1 = document.createElement('div');
+            r1.style.display = 'flex';
+            r1.style.gap = '4px';
+
+            const txt = document.createElement('input');
+            txt.type = 'text';
+            txt.className = 'prop-input';
+            txt.placeholder = 'Risposta...';
+            txt.value = ans.text || '';
+            txt.style.flex = '1';
+            txt.oninput = (e) => { ans.text = e.target.value; };
+            r1.appendChild(txt);
+
+            const btnDel = document.createElement('button');
+            btnDel.className = 'btn-icon-small';
+            btnDel.innerHTML = '🗑️';
+            btnDel.onclick = () => {
+                answers.splice(idx, 1);
+                this.renderDialogAnswersList(selected, q);
+            };
+            r1.appendChild(btnDel);
+            div.appendChild(r1);
+
+            // Row 2: Action type selection
+            const r2 = document.createElement('div');
+            r2.style.display = 'flex';
+            r2.style.gap = '4px';
+
+            const sel = document.createElement('select');
+            sel.className = 'prop-input';
+            sel.style.flex = '1';
+            sel.innerHTML = "\n                <option value=\"close\" " + (ans.actionType === 'close' ? 'selected' : '') + ">Chiudi Dialogo</option>\n                <option value=\"next_q\" " + (ans.actionType === 'next_q' ? 'selected' : '') + ">Vai a Domanda...</option>\n                <option value=\"trigger\" " + (ans.actionType === 'trigger' ? 'selected' : '') + ">Attiva Trigger...</option>\n            ";
+
+            // Row 3: Action value input/select
+            const valCont = document.createElement('div');
+            valCont.style.display = 'flex';
+            valCont.style.gap = '4px';
+            valCont.style.marginTop = '2px';
+
+            const updateValField = () => {
+                valCont.innerHTML = '';
+                const aType = sel.value;
+                ans.actionType = aType;
+
+                if (aType === 'next_q') {
+                    // Dropdown of other questions
+                    const selectQ = document.createElement('select');
+                    selectQ.className = 'prop-input';
+                    selectQ.style.flex = '1';
+                    const questions = selected.userData.dialogQuestions || [];
+                    questions.forEach((otherQ, qIdx) => {
+                        const opt = document.createElement('option');
+                        opt.value = qIdx;
+                        opt.innerText = "Domanda " + (qIdx + 1) + ": " + (otherQ.text?.substring(0, 15) || '') + "...";
+                        if (ans.actionValue == qIdx) opt.selected = true;
+                        selectQ.appendChild(opt);
+                    });
+                    selectQ.onchange = (e) => { ans.actionValue = parseInt(e.target.value); };
+                    valCont.appendChild(selectQ);
+                    ans.actionValue = ans.actionValue !== undefined ? ans.actionValue : 0;
+                } else if (aType === 'trigger') {
+                    // Text input or dropdown with collision/triggers datalist
+                    const inpT = document.createElement('input');
+                    inpT.type = 'text';
+                    inpT.className = 'prop-input';
+                    inpT.placeholder = 'Nome Trigger...';
+                    inpT.value = ans.actionValue || '';
+                    inpT.style.flex = '1';
+                    inpT.setAttribute('list', 'col-target-list');
+                    inpT.oninput = (e) => { ans.actionValue = e.target.value; };
+                    valCont.appendChild(inpT);
+                }
+            };
+
+            sel.onchange = () => {
+                updateValField();
+            };
+
+            r2.appendChild(sel);
+            div.appendChild(r2);
+            div.appendChild(valCont);
+
+            // Populate initial value field state
+            updateValField();
+
+            container.appendChild(div);
+        });
+    }
+
+    updateSequencerUI() {
+        if (!this.app.sceneManager) return;
+        const countEl = document.getElementById('seq-keys-count');
+        if (countEl) countEl.textContent = this.app.sceneManager.keyframes.length;
+
+        const container = document.getElementById('timeline-keyframes-container');
+        if (container) {
+            container.innerHTML = '';
+            this.app.sceneManager.keyframes.forEach(k => {
+                const marker = document.createElement('div');
+                marker.style.position = 'absolute';
+                marker.style.top = '0';
+                marker.style.bottom = '0';
+                marker.style.width = '4px';
+                marker.style.background = '#4f46e5';
+                marker.style.left = `${k.time}%`;
+                marker.title = `Time: ${k.time.toFixed(1)}%`;
+                container.appendChild(marker);
+            });
+        }
     }
 }

@@ -2,18 +2,44 @@ import http from 'http';
 import fs from 'fs';
 import path from 'path';
 import { fileURLToPath } from 'url';
+import { execSync } from 'child_process';
+
+const PORT = 8000;
+const myPid = process.pid;
+console.log(`[Server Woxengine] Starting (PID: ${myPid})...`);
+
+
+
+// 2. Kill any process holding the port PORT
+try {
+    const output = execSync(`lsof -t -i:${PORT}`).toString().trim();
+    if (output) {
+        const pids = output.split('\n').map(p => p.trim()).filter(Boolean).map(Number);
+        for (const pid of pids) {
+            if (pid !== myPid) {
+                try {
+                    process.kill(pid, 'SIGKILL');
+                    console.log(`[Server Woxengine] Abbattuto processo PID ${pid} sulla porta ${PORT}.`);
+                } catch (err) {}
+            }
+        }
+    }
+} catch (e) {
+    // Ignore if lsof is not installed or no process is listening on the port
+}
 
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = path.dirname(__filename);
 
-const PORT = 8000;
 const PUBLIC_DIR = __dirname;
+const syncClients = [];
 
 const MIME_TYPES = {
     '.html': 'text/html',
     '.css': 'text/css',
     '.js': 'text/javascript',
     '.json': 'application/json',
+    '.wscene': 'application/json',
     '.png': 'image/png',
     '.jpg': 'image/jpeg',
     '.gif': 'image/gif',
@@ -29,10 +55,14 @@ const server = http.createServer((req, res) => {
     // Enable CORS
     res.setHeader('Access-Control-Allow-Origin', '*');
     res.setHeader('Access-Control-Allow-Methods', 'GET, POST, OPTIONS');
-    res.setHeader('Access-Control-Allow-Headers', 'Content-Type');
+    res.setHeader('Access-Control-Allow-Headers', '*');
 
     if (req.method === 'OPTIONS') {
-        res.writeHead(204);
+        res.writeHead(204, {
+            'Access-Control-Allow-Origin': '*',
+            'Access-Control-Allow-Methods': 'GET, POST, OPTIONS',
+            'Access-Control-Allow-Headers': '*'
+        });
         res.end();
         return;
     }
@@ -93,9 +123,9 @@ const server = http.createServer((req, res) => {
 
     // --- API: Upload Asset File (GLB/Audio) ---
     if (req.method === 'POST' && req.url === '/api/upload-asset') {
-        const projectName = req.headers['x-project-name'] || 'default_project';
-        const assetType = req.headers['x-asset-type'] || 'assets'; // 'assets' o 'music'
-        const filename = req.headers['x-filename'] || 'file.dat';
+        const projectName = decodeURIComponent(req.headers['x-project-name'] || 'default_project');
+        const assetType = decodeURIComponent(req.headers['x-asset-type'] || 'assets'); // 'assets' o 'music'
+        const filename = decodeURIComponent(req.headers['x-filename'] || 'file.dat');
 
         const targetDir = path.join(PUBLIC_DIR, 'projects', projectName, assetType);
         if (!fs.existsSync(targetDir)) {
@@ -442,6 +472,139 @@ const server = http.createServer((req, res) => {
         return;
     }
 
+    // --- API: Blender Live Sync (SSE stream) ---
+    if (req.method === 'GET' && req.url === '/api/blender-sync-stream') {
+        res.writeHead(200, {
+            'Content-Type': 'text/event-stream',
+            'Cache-Control': 'no-cache',
+            'Connection': 'keep-alive',
+            'Access-Control-Allow-Origin': '*'
+        });
+        syncClients.push(res);
+        console.log(`[Server] Client Blender Sync connesso. Totale: ${syncClients.length}`);
+
+        req.on('close', () => {
+            const idx = syncClients.indexOf(res);
+            if (idx !== -1) {
+                syncClients.splice(idx, 1);
+            }
+            console.log(`[Server] Client Blender Sync disconnesso. Totale: ${syncClients.length}`);
+        });
+        return;
+    }
+
+    // --- API: Blender Live Sync (Post wscene) ---
+    if (req.method === 'POST' && req.url === '/api/blender-sync') {
+        let body = '';
+        req.on('data', chunk => { body += chunk.toString(); });
+        req.on('end', () => {
+            try {
+                const payload = JSON.parse(body);
+                const { projectName, levelIndex, wscene } = payload;
+                if (!wscene) {
+                    res.writeHead(400, { 'Content-Type': 'application/json' });
+                    res.end(JSON.stringify({ error: 'wscene data missing' }));
+                    return;
+                }
+
+                const project = projectName || 'default_project';
+                let targetLvlIndex = levelIndex;
+                const projectPath = path.join(PUBLIC_DIR, 'projects', project);
+                const configPath = path.join(projectPath, 'project.json');
+                
+                // Read current project.json to see if we need to append a new level
+                let projectConfig = null;
+                if (fs.existsSync(configPath)) {
+                    try {
+                        projectConfig = JSON.parse(fs.readFileSync(configPath, 'utf8'));
+                    } catch (e) {
+                        console.error("[Server] Errore lettura project.json:", e);
+                    }
+                }
+                
+                if (projectConfig) {
+                    if (targetLvlIndex === 'NEW') {
+                        // Create a new level entry
+                        targetLvlIndex = projectConfig.levels ? projectConfig.levels.length : 0;
+                        const newLvlName = `Blender Sync ${targetLvlIndex + 1}`;
+                        const newLvlFilename = `blender_sync_${targetLvlIndex}.json`;
+                        
+                        if (!projectConfig.levels) projectConfig.levels = [];
+                        projectConfig.levels.push({
+                            name: newLvlName,
+                            music: '',
+                            musicFilename: '',
+                            isExternal: true,
+                            externalFilename: newLvlFilename
+                        });
+                        
+                        fs.writeFileSync(configPath, JSON.stringify(projectConfig, null, 2));
+                        console.log(`[Server] Creato nuovo livello Blender Sync in project.json all'indice ${targetLvlIndex}`);
+                    }
+                }
+
+                // If projectName is provided, save the embedded GLB to disk
+                if (wscene.glb) {
+                    const assetsDir = path.join(projectPath, 'assets');
+                    if (!fs.existsSync(assetsDir)) {
+                        fs.mkdirSync(assetsDir, { recursive: true });
+                    }
+                    
+                    // Decodifica glb base64 e salvalo
+                    const base64Data = wscene.glb.replace(/^data:model\/gltf-binary;base64,/, "");
+                    const buffer = Buffer.from(base64Data, 'base64');
+                    const glbFilename = `blender_sync_${targetLvlIndex}.glb`;
+                    const glbPath = path.join(assetsDir, glbFilename);
+                    
+                    fs.writeFileSync(glbPath, buffer);
+                    console.log(`[Server] Scritto GLB per blender-sync in ${glbPath}`);
+                    
+                    // Sostituisci il campo base64 nel wscene con il path relativo
+                    wscene.glbSource = `projects/${project}/assets/${glbFilename}`;
+                    delete wscene.glb; // rimuoviamo per risparmiare memoria/banda
+                }
+
+                // Save the wscene level data as projects/<project>/levels/blender_sync_<level_index>.json
+                const levelsDir = path.join(projectPath, 'levels');
+                if (!fs.existsSync(levelsDir)) {
+                    fs.mkdirSync(levelsDir, { recursive: true });
+                }
+                
+                let levelFilename = `blender_sync_${targetLvlIndex}.json`;
+                if (projectConfig && projectConfig.levels && projectConfig.levels[targetLvlIndex]) {
+                    const lvlInfo = projectConfig.levels[targetLvlIndex];
+                    if (lvlInfo.externalFilename) {
+                        levelFilename = lvlInfo.externalFilename;
+                    }
+                }
+                const levelPath = path.join(levelsDir, levelFilename);
+                
+                fs.writeFileSync(levelPath, JSON.stringify(wscene, null, 2));
+                console.log(`[Server] Salvato file livello su disco: ${levelPath}`);
+
+                // Invia broadcast a tutti i client SSE connessi
+                const broadcastPayload = {
+                    projectName: project,
+                    levelIndex: targetLvlIndex,
+                    wscene: wscene,
+                    projectConfig: projectConfig
+                };
+                const broadcastData = JSON.stringify(broadcastPayload);
+                syncClients.forEach(client => {
+                    client.write(`data: ${broadcastData}\n\n`);
+                });
+
+                res.writeHead(200, { 'Content-Type': 'application/json' });
+                res.end(JSON.stringify({ success: true, levelIndex: targetLvlIndex }));
+            } catch (err) {
+                console.error('[Server] Errore in blender-sync:', err);
+                res.writeHead(500, { 'Content-Type': 'application/json' });
+                res.end(JSON.stringify({ error: err.message }));
+            }
+        });
+        return;
+    }
+
     // --- Static File Server ---
     let filePath = path.join(PUBLIC_DIR, req.url.split('?')[0]);
     if (filePath === PUBLIC_DIR || filePath.endsWith('/')) {
@@ -461,8 +624,13 @@ const server = http.createServer((req, res) => {
                 res.end(`Errore del server: ${err.code}`);
             }
         } else {
-            res.writeHead(200, { 'Content-Type': contentType });
-            res.end(content, 'utf-8');
+            res.writeHead(200, { 
+                'Content-Type': contentType,
+                'Cache-Control': 'no-store, no-cache, must-revalidate, proxy-revalidate',
+                'Pragma': 'no-cache',
+                'Expires': '0'
+            });
+            res.end(content);
         }
     });
 });

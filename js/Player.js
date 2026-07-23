@@ -2,7 +2,7 @@ import * as THREE from 'three';
 
 export const PlayerFactory = {
     createPlayer(nameIndex) {
-        const geo = new THREE.CapsuleGeometry(0.5, 1, 4, 8);
+        const geo = new THREE.CapsuleGeometry(0.3, 1.2, 4, 8);
         const mat = new THREE.MeshStandardMaterial({  
             color: 0x4caf50, 
             transparent: true, 
@@ -10,13 +10,14 @@ export const PlayerFactory = {
             wireframe: true 
         });
         const p = new THREE.Mesh(geo, mat);
-        p.position.y = 1;
+        p.position.y = 0.9;
         p.name = "Player_" + nameIndex;
         p.userData = { 
             isPlayer: true, 
             isAsset: true,
             type: 'Player',
             typology: '8WAY',
+            collisionMode: 'climb',
             anims: [], 
             actions: [
                 { name: 'Idle', key: '', type: 'Idle', anim: '', mirror: false, active: true },

@@ -90,13 +90,23 @@ body { margin: 0; padding: 0; width: 100vw; height: 100vh; background-color: var
     position: fixed;
     background: #252525; border: 1px solid #444; border-radius: 4px;
     box-shadow: 0 4px 12px rgba(0,0,0,0.5);
-    display: none; flex-direction: column; z-index: 10000; min-width: 150px;
+    display: none; flex-direction: row; z-index: 10000;
+}
+.asset-menu-column {
+    display: flex;
+    flex-direction: column;
+    min-width: 150px;
+    border-right: 1px solid #333;
+}
+.asset-menu-column:last-child {
+    border-right: none;
 }
 .asset-menu-item {
     padding: 8px 12px; cursor: pointer; font-size: 12px; color: #ddd;
     border-bottom: 1px solid #333;
 }
-.asset-menu-item:last-child { border-bottom: none; }
+.asset-menu-column:last-child .asset-menu-item:last-child { border-bottom: none; }
+.asset-menu-column:first-child .asset-menu-item:last-child { border-bottom: none; }
 .asset-menu-item:hover { background: var(--accent); color: white; }
 
 /* Player Actions */
@@ -631,5 +641,83 @@ body { margin: 0; padding: 0; width: 100vw; height: 100vh; background-color: var
 }
 .prop-tab-content.active {
     display: flex;
+}
+
+/* ========== CUT SCENE OVERLAY ========== */
+#game-cutscene {
+    position: absolute;
+    inset: 0;
+    z-index: 5500;
+    background: #000;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    overflow: hidden;
+}
+
+/* Animations/Transitions */
+#game-cutscene.cutscene-fade-in {
+    animation: cutsceneFadeIn 0.8s forwards ease-out;
+}
+
+#game-cutscene.cutscene-fade-out {
+    animation: cutsceneFadeOut 0.6s forwards ease-in;
+}
+
+@keyframes cutsceneFadeIn {
+    from { opacity: 0; }
+    to { opacity: 1; }
+}
+
+@keyframes cutsceneFadeOut {
+    from { opacity: 1; }
+    to { opacity: 0; }
+}
+
+/* Glitch animation for cutscene enter */
+#game-cutscene.cutscene-glitch-in {
+    animation: cutsceneGlitchIn 0.6s forwards steps(5);
+}
+
+@keyframes cutsceneGlitchIn {
+    0% {
+        opacity: 0;
+        transform: scale(1.1) skew(0deg);
+        filter: hue-rotate(0deg) contrast(1.5);
+    }
+    20% {
+        opacity: 0.8;
+        transform: scale(0.95) skew(10deg);
+        filter: hue-rotate(90deg) contrast(2);
+    }
+    40% {
+        opacity: 0.3;
+        transform: scale(1.05) skew(-5deg);
+        filter: hue-rotate(180deg) contrast(1.2);
+    }
+    60% {
+        opacity: 0.9;
+        transform: scale(1.0) skew(15deg);
+        filter: hue-rotate(270deg) contrast(2);
+    }
+    80% {
+        opacity: 0.6;
+        transform: scale(1.02) skew(-10deg) translate(5px, -5px);
+        filter: hue-rotate(360deg) contrast(1.5);
+    }
+    100% {
+        opacity: 1;
+        transform: scale(1.0) skew(0deg) translate(0, 0);
+        filter: none;
+    }
+}
+
+.cutscene-skip {
+    animation: cutscenePulse 1.5s infinite;
+}
+
+@keyframes cutscenePulse {
+    0%, 100% { opacity: 0.4; }
+    50% { opacity: 1; }
 }
 
